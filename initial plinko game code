@@ -34,6 +34,7 @@
   .btn{height:42px;border-radius:12px;border:1px solid rgba(0,0,0,.25);font-weight:900;letter-spacing:.2px;cursor:pointer}
   .btn.green{color:#062312;background:linear-gradient(180deg,var(--greenTop),var(--greenBot));box-shadow:0 10px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.35)}
   .btn.dark{color:#e9eef9;background:linear-gradient(180deg,#192b48,#0f1a30);border-color:var(--btnEdge)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
   .stat{font-weight:800;letter-spacing:.2px;text-align:center}
 
   /* Mobile squeeze */
@@ -248,15 +249,15 @@
   }
 
   // ===== UI actions =====
-  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; }
   function drop(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); if(balance<bet) return; balance-=bet; renderHUD(); const spread=pegSpacingX*0.30; const centerX=(topLeft.x+topRight.x)/2; const spawnX = centerX + (rng()-0.5)*spread; const spawnY = topLeft.y - SPAWN_HEIGHT; balls.push(new Ball(spawnX,spawnY)); }
 
   manualBtn.addEventListener('click',()=>{ auto=false; manualBtn.classList.add('active'); autoBtn.classList.remove('active'); });
   autoBtn  .addEventListener('click',()=>{ auto=!auto; autoBtn.classList.toggle('active',auto); manualBtn.classList.toggle('active',!auto); });
   dropBtn  .addEventListener('click', drop);
   canvas   .addEventListener('pointerdown',(e)=>{ const r=canvas.getBoundingClientRect(); if(e.clientY< (r.top + topOffset + pegSpacingY*2)) drop(); });
-  betHalf  .addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)/2).toFixed(2); });
-  betDouble.addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)*2).toFixed(2); });
+  betHalf  .addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)/2).toFixed(2); updateDropBtn(); });
+  betDouble.addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)*2).toFixed(2); updateDropBtn(); });
+  betEl    .addEventListener('input', updateDropBtn);
   riskEl   .addEventListener('change',()=>{ updateMultipliers(); draw(); });
   rowsEl   .addEventListener('input',()=>{ buildBoard(); draw(); });
 
@@ -295,7 +296,8 @@
 
   // Init
   function init(){ size(); renderHUD(); loop(); }
-  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; }
+  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; updateDropBtn(); }
+  function updateDropBtn(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); dropBtn.disabled = balance < bet; }
   init();
 })();
 </script>
