@@ -3,24 +3,23 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Plinko — Offline (Side Selectors, 3D, Anti‑Stick, Flat Top)</title>
+<title>Plinko — Responsive Vertical Fit (PC + Mobile)</title>
 <style>
   *{box-sizing:border-box}
   html,body{height:100%;margin:0;background:#0b1220;color:#e9eef9}
-  /* Offline: system font stack only */
   body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
 
-  /* Canvas fills view; board is laid out between side panels in JS */
+  /* Canvas fills view; board rendered with internal scale so it fits vertically */
   #stage{display:block;width:100%;height:100dvh;touch-action:manipulation;background:radial-gradient(1200px 800px at 50% 15%, rgba(130,170,255,.10), rgba(0,0,0,0))}
 
-  /* —— Side Panels (selectors on the sides) —— */
   :root{
     --sideW: clamp(200px, 26vw, 300px);
+    --sideW-compact: clamp(150px, 34vw, 200px);
     --cardTop:#233045; --cardBot:#1b273b; --edge:#2a3a54; --muted:#9fb3d8; --accent:#8cb6ff;
     --btnTop:#1f2d46; --btnBot:#11213a; --btnEdge:#3a5176; --greenTop:#2af07a; --greenBot:#17b856;
     --chipRed:#ef2b43; --chipOrange:#ff6b2e; --chipAmber:#ff9c2e; --chipYellow:#ffc43c; --chipPale:#ffd95a;
   }
-  .side{position:fixed;top:0;bottom:0;width:var(--sideW);padding:12px;display:flex;flex-direction:column;gap:12px;z-index:3}
+  .side{position:fixed;top:0;bottom:0;width:var(--sideW);padding:12px;display:flex;flex-direction:column;gap:12px;z-index:3;overflow-y:auto;overscroll-behavior:contain;padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:calc(12px + env(safe-area-inset-bottom))}
   #left{left:0;background:linear-gradient(180deg,#1f2b43,#182439);border-right:1px solid var(--edge);box-shadow:8px 0 24px rgba(0,0,0,.35)}
   #right{right:0;background:linear-gradient(180deg,#1c263c,#152136);border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35)}
   .card{border:1px solid var(--edge);border-radius:14px;padding:10px;background:linear-gradient(180deg,var(--cardTop),var(--cardBot));box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.25)}
@@ -34,10 +33,11 @@
   .btn{height:42px;border-radius:12px;border:1px solid rgba(0,0,0,.25);font-weight:900;letter-spacing:.2px;cursor:pointer}
   .btn.green{color:#062312;background:linear-gradient(180deg,var(--greenTop),var(--greenBot));box-shadow:0 10px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.35)}
   .btn.dark{color:#e9eef9;background:linear-gradient(180deg,#192b48,#0f1a30);border-color:var(--btnEdge)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
   .stat{font-weight:800;letter-spacing:.2px;text-align:center}
 
-  /* Mobile squeeze */
-  @media (max-width: 860px){ :root{--sideW: 200px;} }
+  /* Compact on narrow screens */
+  @media (max-width: 900px){ :root{ --sideW: var(--sideW-compact); } .title{font-size:13px} .seg>button{min-width:34px;height:32px;padding:0 8px;font-size:12px} input[type=number], select{height:32px;font-size:12px} .btn{height:36px;font-size:13px} }
 </style>
 </head>
 <body>
@@ -73,10 +73,21 @@
     <button id="dropBtn" class="btn green">Drop Ball</button>
   </aside>
 
-  <!-- Right info (stats) -->
-  <aside id="right" class="side" aria-label="Stats">
+  <!-- Right info (stats + power-ups legend) -->
+  <aside id="right" class="side" aria-label="Stats and Power-ups">
     <div class="card stat">Balance<br><span id="balance" style="font-size:20px">$1000.00</span></div>
     <div class="card stat">Streak<br><span id="streak" style="font-size:20px">x1</span></div>
+    <div class="card">
+      <div class="title">Power-ups</div>
+      <ul style="margin:0;padding-left:18px;line-height:1.4;font-size:14px;color:var(--muted)">
+        <li><span style="color:rgba(255,80,80,0.9)">Magnet Pull</span> – Attracts ball to best slot.</li>
+        <li><span style="color:rgba(80,160,255,0.9)">Wind Gust</span> – Pushes ball sideways mid‑fall.</li>
+        <li><span style="color:rgba(180,80,255,0.9)">Slow Motion</span> – Temporarily slows the ball.</li>
+        <li><span style="color:rgba(255,217,77,0.9)">Bumper Peg</span> – Stronger peg bounce.</li>
+        <li>Multi‑ball – Splits into 3 balls mid‑fall.</li>
+        <li>Exploding Peg – Removes a random peg during the drop.</li>
+      </ul>
+    </div>
   </aside>
 
   <canvas id="stage" aria-label="Plinko board (tap near the top to drop)"></canvas>
@@ -118,84 +129,91 @@
   let nLeft={x:0,y:0}, nRight={x:0,y:0}; // inward normals for side walls
 
   // Anti-stick physics
-  const GRAVITY=0.31;
-  const RESTITUTION=0.50;
-  const TANGENTIAL=0.88;
-  const WALL_REST=0.40;
-  const AIR_DRAG=0.010;
-  const JITTER=0.10;
-  const MAX_VX=1.6;
-  const SPAWN_HEIGHT=60;
-  const INITIAL_VY=0.65;
-  const MIN_VY_AFTER_HIT=0.12;
+  const GRAVITY=0.31; const RESTITUTION=0.50; const TANGENTIAL=0.88; const WALL_REST=0.40; const AIR_DRAG=0.010; const JITTER=0.10; const MAX_VX=1.6; const SPAWN_HEIGHT=60; const INITIAL_VY=0.65; const MIN_VY_AFTER_HIT=0.12;
 
   // State
-  let auto=false, lastDrop=0, dropInterval=240;
+  let auto=false, lastDrop=0, dropInterval=260; // slightly slower on mobile
   let balance=1000, streak=1;
 
   // RNG
   let rng = mulberry32(Date.now()>>>0);
+
+  // Board scale/translation to fit vertically
+  let boardScale=1, tx=0, ty=0, boardHeightEst=0, availW=0;
 
   // ===== Size & layout =====
   function size(){
     const cssW = window.innerWidth; const cssH = window.innerHeight;
     canvas.style.width = cssW+'px'; canvas.style.height = cssH+'px';
     canvas.width = Math.floor(cssW*DPR); canvas.height = Math.floor(cssH*DPR);
+    // set base transform; we override per-frame with scaling
     ctx.setTransform(DPR,0,0,DPR,0,0);
     W = cssW; H = cssH;
-    leftPad  = Math.ceil(L.getBoundingClientRect().width) + 10;
-    rightPad = Math.ceil(R.getBoundingClientRect().width) + 10;
-    buildBoard();
-  }
-  addEventListener('resize', size);
-  addEventListener('orientationchange', ()=> setTimeout(size, 80));
 
-  // ===== Build board with flat top =====
-  function inwardNormal(ax,ay,bx,by){ let nx=-(by-ay), ny=(bx-ax); const len=Math.hypot(nx,ny)||1; nx/=len; ny/=len; const cx=(ax+bx)/2, cy=(ay+by)/2; // aim normal roughly toward canvas center
-    const toC = (W/2-cx)*nx + (H/2-cy)*ny; if(toC<0){ nx=-nx; ny=-ny; } return {x:nx,y:ny}; }
+    // gutters from actual side widths; allow panels to overlap internally, not board
+    const leftW  = Math.ceil(L.getBoundingClientRect().width);
+    const rightW = Math.ceil(R.getBoundingClientRect().width);
+    leftPad  = leftW + 10; rightPad = rightW + 10;
+
+    buildBoard();
+    computeBoardScale();
+  }
+  addEventListener('resize', size, {passive:true});
+  addEventListener('orientationchange', ()=> setTimeout(size, 100));
+
+  // ===== Build board with flat 3-peg top =====
+  function inwardNormal(ax,ay,bx,by){ let nx=-(by-ay), ny=(bx-ax); const len=Math.hypot(nx,ny)||1; nx/=len; ny/=len; const cx=(ax+bx)/2, cy=(ay+by)/2; const toC = (W/2-cx)*nx + (H/2-cy)*ny; if(toC<0){ nx=-nx; ny=-ny; } return {x:nx,y:ny}; }
 
   function buildBoard(){
     rows = parseInt(rowsEl.value,10); rowsLabel.textContent = rows;
     pegs.length=0; slots.length=0;
 
-    // Available width between sidebars
-    const availW = Math.max(220, W - leftPad - rightPad);
-    pegSpacingY = Math.min(44, Math.max(26, Math.floor((H-220)/rows)));
-    pegSpacingX = Math.min(48, Math.max(24, Math.floor(availW/(TOP_START_COUNT + rows))));
+    availW = Math.max(220, W - leftPad - rightPad);
+    pegSpacingY = Math.min(44, Math.max(24, Math.floor((H-220)/rows)));
+    pegSpacingX = Math.min(48, Math.max(22, Math.floor(availW/(TOP_START_COUNT + rows))));
     pegRadius   = Math.max(4, Math.min(6, Math.floor(Math.min(pegSpacingX,pegSpacingY)*0.22)));
-    topOffset   = Math.max(58, Math.min(120, Math.floor(H*0.11)));
+    topOffset   = Math.max(54, Math.min(110, Math.floor(H*0.10)));
 
-    // Row 0 has 3 pegs; last row has TOP_START_COUNT + rows - 1 pegs
     const firstCount = TOP_START_COUNT;
     const lastCount  = TOP_START_COUNT + rows - 1;
     const baseY = topOffset + (rows-1)*pegSpacingY + 36;
 
-    // Top segment across first row, slightly wider than pegs
     const firstRowWidth = (firstCount-1)*pegSpacingX;
     const centerX = leftPad + availW/2;
     topLeft  = {x: centerX - firstRowWidth/2 - 12, y: topOffset};
     topRight = {x: centerX + firstRowWidth/2 + 12, y: topOffset};
 
-    // Base corners under last row
     const lastRowWidth = (lastCount-1)*pegSpacingX;
     baseLeft  = {x: centerX - lastRowWidth/2 - 16, y: baseY};
     baseRight = {x: centerX + lastRowWidth/2 + 16, y: baseY};
 
-    // Side wall normals
     nLeft  = inwardNormal(topLeft.x, topLeft.y, baseLeft.x, baseLeft.y);
     nRight = inwardNormal(topRight.x, topRight.y, baseRight.x, baseRight.y);
 
-    // Build pegs (3,4,5,...)
+    // pegs: 3,4,5,...
     for(let r=0;r<rows;r++){
       const count = firstCount + r; const y = topOffset + r*pegSpacingY;
       const rowWidth=(count-1)*pegSpacingX; const startX=centerX - rowWidth/2;
       for(let c=0;c<count;c++) pegs.push({x:startX + c*pegSpacingX, y, r:pegRadius});
     }
 
-    // Slots align to last row spacing
+    // slots
     const nSlots=lastCount+1; const slotW=pegSpacingX; const startX = centerX - (nSlots-1)*slotW/2;
     for(let i=0;i<nSlots;i++) slots.push({x:startX + i*slotW, y: baseY, w: slotW, mult:1});
     updateMultipliers();
+
+    // estimate board height for scaling (base + slot labels area)
+    boardHeightEst = baseY + 64; // add some room for slot chips
+  }
+
+  function computeBoardScale(){
+    // Fit vertically with a small margin; keep aspect uniform
+    const maxH = H - 16; // padding
+    boardScale = Math.min(1, maxH / boardHeightEst);
+    // Center within the free board strip between side panels
+    const scaledBoardW = (W - leftPad - rightPad) * boardScale;
+    tx = leftPad + ((W - leftPad - rightPad) - scaledBoardW)/2 - leftPad*(boardScale-1);
+    ty = Math.max(8, (H - boardHeightEst*boardScale)/2);
   }
 
   // ===== Multipliers sized to slots =====
@@ -203,7 +221,6 @@
   const comb=(n,k)=> fact(n)/(fact(k)*fact(n-k));
   function binom(n,k,p){ return comb(n,k)*Math.pow(p,k)*Math.pow(1-p,n-k); }
   function buildMultipliers(effectiveRows, risk){
-    // effectiveRows equals lastCount for slot count - 1
     const nSlots=effectiveRows+1; const nRows=effectiveRows; const probs=[]; for(let k=0;k<nSlots;k++) probs.push(binom(nRows,k,0.5));
     let edgeBoost, centerPenalty; if(risk==='high'){edgeBoost=4.2;centerPenalty=0.52;} else if(risk==='low'){edgeBoost=2.1;centerPenalty=0.86;} else {edgeBoost=3.0;centerPenalty=0.70;}
     const mid=(nSlots-1)/2, raw=[]; for(let k=0;k<nSlots;k++){ const d=Math.abs(k-mid)/mid; const shape=1+d*(edgeBoost-1); const centerAdj=1-(1-centerPenalty)*(1-d); raw.push(shape*centerAdj); }
@@ -211,7 +228,6 @@
     return raw.map(v=>{ const m=Math.max(0.1, Math.round(v*scale*100)/100); if(m>=10) return Math.round(m); if(m>=5) return Math.round(m*2)/2; return Math.round(m*10)/10; });
   }
   function updateMultipliers(){
-    // effective rows equals lastCount (top row count 3 then growing)
     const effectiveRows = TOP_START_COUNT + rows - 1;
     const arr=buildMultipliers(effectiveRows, riskEl.value);
     for (let i=0;i<slots.length;i++) slots[i].mult=arr[i]||arr[arr.length-1];
@@ -219,7 +235,6 @@
 
   // ===== Physics =====
   function collideEdge(ball, A, n){
-    // Distance from point to infinite line through A with normal n
     const d=(ball.x-A.x)*n.x + (ball.y-A.y)*n.y; const pen=ball.r - d; if(pen>0){
       ball.x += n.x*pen; ball.y += n.y*pen;
       const vdot = ball.vx*n.x + ball.vy*n.y; // normal
@@ -248,24 +263,30 @@
   }
 
   // ===== UI actions =====
-  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; }
+  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; updateDropBtn(); }
+  function updateDropBtn(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); dropBtn.disabled = balance < bet; }
   function drop(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); if(balance<bet) return; balance-=bet; renderHUD(); const spread=pegSpacingX*0.30; const centerX=(topLeft.x+topRight.x)/2; const spawnX = centerX + (rng()-0.5)*spread; const spawnY = topLeft.y - SPAWN_HEIGHT; balls.push(new Ball(spawnX,spawnY)); }
 
   manualBtn.addEventListener('click',()=>{ auto=false; manualBtn.classList.add('active'); autoBtn.classList.remove('active'); });
   autoBtn  .addEventListener('click',()=>{ auto=!auto; autoBtn.classList.toggle('active',auto); manualBtn.classList.toggle('active',!auto); });
   dropBtn  .addEventListener('click', drop);
-  canvas   .addEventListener('pointerdown',(e)=>{ const r=canvas.getBoundingClientRect(); if(e.clientY< (r.top + topOffset + pegSpacingY*2)) drop(); });
-  betHalf  .addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)/2).toFixed(2); });
-  betDouble.addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)*2).toFixed(2); });
+  canvas   .addEventListener('pointerdown',(e)=>{ // simple: tap top third of screen to drop
+    if(e.clientY < window.innerHeight*0.35) drop();
+  });
+  betHalf  .addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)/2).toFixed(2); updateDropBtn(); });
+  betDouble.addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)*2).toFixed(2); updateDropBtn(); });
+  betEl    .addEventListener('input', updateDropBtn);
   riskEl   .addEventListener('change',()=>{ updateMultipliers(); draw(); });
-  rowsEl   .addEventListener('input',()=>{ buildBoard(); draw(); });
+  rowsEl   .addEventListener('input',()=>{ buildBoard(); computeBoardScale(); draw(); });
 
   // ===== Draw helpers =====
   function drawBackground(){
-    ctx.clearRect(0,0,W,H);
-    const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#09162e'); g.addColorStop(1,'#070f22'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // apply board transform to keep drawing between side panels and fit vertically
+    ctx.setTransform(DPR*boardScale,0,0,DPR*boardScale, tx*DPR, ty*DPR);
+    ctx.clearRect(-tx, -ty, W, H); // clear using unscaled window area
+    const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#09162e'); g.addColorStop(1,'#070f22'); ctx.fillStyle=g; ctx.fillRect(-tx, -ty, W, H);
     // trapezoid frame: topLeft -> baseLeft -> baseRight -> topRight
-    ctx.strokeStyle='rgba(156,209,255,.38)'; ctx.lineWidth=1.6; ctx.beginPath();
+    ctx.strokeStyle='rgba(156,209,255,.38)'; ctx.lineWidth=1.6/boardScale; ctx.beginPath();
     ctx.moveTo(topLeft.x, topLeft.y);
     ctx.lineTo(baseLeft.x, baseLeft.y);
     ctx.lineTo(baseRight.x, baseRight.y);
@@ -283,7 +304,7 @@
   function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
   function shade(hex, amt){ const c=parseInt(hex.slice(1),16); let r=(c>>16)&255,g=(c>>8)&255,b=c&255; r=Math.min(255,Math.max(0,r+amt)); g=Math.min(255,Math.max(0,g+amt)); b=Math.min(255,Math.max(0,b+amt)); return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
   function formatMult(m){ const v=+m; return (v>=10?Math.round(v):v.toFixed(1))+'x'; }
-  function drawSlots(){ const y = (slots[0]?.y || (topOffset + (rows-1)*pegSpacingY + 36)) + 6; const h=28; for(let i=0;i<slots.length;i++){ const s=slots[i]; const x=s.x - (s.w-8)/2, w=s.w-8; const col=chipColor(i,slots.length); ctx.save(); ctx.shadowColor='rgba(0,0,0,.4)'; ctx.shadowBlur=10; roundRect(x,y,w,h,9); const gg=ctx.createLinearGradient(0,y,0,y+h); gg.addColorStop(0, shade(col, 14)); gg.addColorStop(1, col); ctx.fillStyle=gg; ctx.fill(); ctx.restore(); ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke(); ctx.save(); ctx.globalAlpha=.25; roundRect(x+2,y+2,w-4,h*.42,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.restore(); const label=formatMult(s.mult); ctx.font='800 12px ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle=(i<2||i>slots.length-3)?'#fff':'#1a1400'; ctx.fillText(label, x+w/2, y+h/2+0.5); } }
+  function drawSlots(){ const y = (slots[0]?.y || (topOffset + (rows-1)*pegSpacingY + 36)) + 6; const h=28; for(let i=0;i<slots.length;i++){ const s=slots[i]; const x=s.x - (s.w-8)/2, w=s.w-8; const col=chipColor(i,slots.length); ctx.save(); ctx.shadowColor='rgba(0,0,0,.4)'; ctx.shadowBlur=10; roundRect(x,y,w,h,9); const gg=ctx.createLinearGradient(0,y,0,y+h); gg.addColorStop(0, shade(col, 14)); gg.addColorStop(1, col); ctx.fillStyle=gg; ctx.fill(); ctx.restore(); ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke(); ctx.save(); ctx.globalAlpha=.25; roundRect(x+2,y+2,w-4,h*.42,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.restore(); const label=formatMult(s.mult); ctx.font=`800 ${12/boardScale}px ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle=(i<2||i>slots.length-3)?'#fff':'#1a1400'; ctx.fillText(label, x+w/2, y+h/2+0.5); } }
   function drawBall(b){ if(!b.trail) b.trail=[]; b.trail.push({x:b.x,y:b.y}); if(b.trail.length>10) b.trail.shift(); ctx.save(); ctx.globalCompositeOperation='lighter'; for(let i=0;i<b.trail.length;i++){ const t=b.trail[i], a=i/b.trail.length; ctx.globalAlpha=0.08+a*0.14; ctx.beginPath(); ctx.arc(t.x,t.y,b.r*(0.7+a*0.5),0,TAU); ctx.fillStyle='rgba(156,209,255,.55)'; ctx.fill(); } ctx.restore(); ctx.globalAlpha=1; const grad=ctx.createRadialGradient(b.x-2,b.y-3,1.5,b.x,b.y,b.r+7); grad.addColorStop(0,'#ffffff'); grad.addColorStop(.25,'#cfe6ff'); grad.addColorStop(1,'#2b4a7d'); ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fillStyle=grad; ctx.fill(); }
 
   function draw(){ drawBackground(); for(const p of pegs) drawPeg(p); drawSlots(); balls.forEach(b=> b.draw()); }
@@ -295,7 +316,7 @@
 
   // Init
   function init(){ size(); renderHUD(); loop(); }
-  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; }
+  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; updateDropBtn(); }
   init();
 })();
 </script>
