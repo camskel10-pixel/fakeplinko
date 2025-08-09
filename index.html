@@ -2,75 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Plinko Deluxe</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Plinko — Responsive Vertical Fit (PC + Mobile)</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <!-- Left controls -->
-  <aside id="left" class="side">
+  <!-- Left controls (selectors on the side) -->
+  <aside id="left" class="side" aria-label="Controls">
     <div class="card">
       <div class="title">Mode</div>
-      <div class="seg">
-        <button id="manualBtn" class="active">Manual</button>
-        <button id="autoBtn">Auto</button>
+      <div class="seg" role="tablist">
+        <button id="manualBtn" class="active" role="tab" aria-selected="true">Manual</button>
+        <button id="autoBtn" role="tab" aria-selected="false">Auto</button>
       </div>
     </div>
-
     <div class="card">
       <div class="title">Bet</div>
       <div class="row">
-        <button id="betHalf" class="btn dark">½</button>
-        <input id="bet" type="number" min="0.1" step="0.1" value="1.0" />
-        <button id="betDouble" class="btn dark">2×</button>
+        <button id="betHalf" class="btn dark sm">½</button>
+        <input id="bet" type="number" min="0.1" step="0.1" value="1.0" inputmode="decimal"/>
+        <button id="betDouble" class="btn dark sm">2×</button>
       </div>
     </div>
-
     <div class="card">
       <div class="title">Risk</div>
-      <select id="risk">
+      <select id="risk" class="select3d">
+        <option value="verylow">Very Low</option>
         <option value="low">Low</option>
         <option value="medium" selected>Medium</option>
         <option value="high">High</option>
         <option value="extreme">Extreme</option>
-        <option value="safe">Safe</option>
       </select>
     </div>
-
-    <div class="card">
-      <div class="title">Rows <span id="rowsLabel"></span></div>
-      <input id="rows" type="range" min="8" max="16" value="16" />
-    </div>
-
     <div class="card">
       <div class="title">Pattern</div>
-      <select id="pattern">
-        <option value="normal">Normal</option>
-        <option value="zigzag">Zigzag</option>
-        <option value="wide">Wide</option>
+      <select id="pattern" class="select3d">
+        <option value="flat3" selected>Flat Top (3)</option>
+        <option value="point">Pointed Apex</option>
+        <option value="leanL">Left Bias</option>
+        <option value="leanR">Right Bias</option>
+        <option value="sparse">Sparse Chaos</option>
       </select>
     </div>
-
     <div class="card">
-      <div class="title">Ball Color</div>
-      <input type="color" id="ballColor" value="#9cd1ff" />
+      <div class="title">Rows <span id="rowsLabel" class="subtle"></span></div>
+      <div class="row"><input id="rows" type="range" min="8" max="16" value="12"/></div>
     </div>
-
+    <div class="card">
+      <div class="title">Ball</div>
+      <div id="ballColors" class="row">
+        <button class="chip" data-color="#8cb6ff" aria-label="Blue"></button>
+        <button class="chip" data-color="#ff8aa5" aria-label="Pink"></button>
+        <button class="chip" data-color="#7ef7a4" aria-label="Green"></button>
+        <button class="chip" data-color="#ffd95a" aria-label="Yellow"></button>
+        <button class="chip" data-color="#c68cff" aria-label="Purple"></button>
+      </div>
+    </div>
     <button id="dropBtn" class="btn green">Drop Ball</button>
   </aside>
 
-  <!-- Right panel -->
-  <aside id="right" class="side">
-    <div class="card stat">Balance<br><span id="balance">$1000.00</span></div>
-    <div class="card stat">Streak<br><span id="streak">x1</span></div>
-
+  <!-- Right info (stats + leaderboard + power-ups legend) -->
+  <aside id="right" class="side" aria-label="Stats and Leaderboard">
+    <div class="card stat">Balance<br><span id="balance" class="big">$1000.00</span></div>
+    <div class="card stat">Streak<br><span id="streak" class="big">x1</span></div>
+    <div class="card" id="leaderboard">
+      <div class="title">Leaderboard (local)</div>
+      <ol id="lbList" class="lb"></ol>
+      <button id="resetBtn" class="btn dark xs" title="Clear progress & leaderboard">Reset Progress</button>
+    </div>
     <div class="card">
-      <div class="title">Leaderboard</div>
-      <ul id="leaderboard"></ul>
+      <div class="title">Power-ups</div>
+      <ul class="legend">
+        <li><span class="dot red"></span> Magnet Pull – Attracts to best slot.</li>
+        <li><span class="dot blue"></span> Wind Gust – Pushes sideways mid-fall.</li>
+        <li><span class="dot purple"></span> Slow Motion – Temporarily slows.</li>
+        <li><span class="dot gold"></span> Bumper Peg – Stronger rebounds.</li>
+        <li><span class="dot pale"></span> Multi-ball – Splits into 3 balls.</li>
+        <li><span class="dot white"></span> Exploding Peg – Removes a peg.</li>
+      </ul>
     </div>
   </aside>
 
-  <!-- Main game -->
+  <!-- Canvas for the Plinko board -->
   <canvas id="stage"></canvas>
 
   <script src="game.js" defer></script>
