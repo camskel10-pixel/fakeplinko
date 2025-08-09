@@ -1,0 +1,215 @@
+(function(){
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const L = document.getElementById('left');
+  const R = document.getElementById('right');
+
+  // UI refs
+  const manualBtn = document.getElementById('manualBtn');
+  const autoBtn   = document.getElementById('autoBtn');
+  const betEl     = document.getElementById('bet');
+  const betHalf   = document.getElementById('betHalf');
+  const betDouble = document.getElementById('betDouble');
+  const riskEl    = document.getElementById('risk');
+  const rowsEl    = document.getElementById('rows');
+  const rowsLabel = document.getElementById('rowsLabel');
+  const dropBtn   = document.getElementById('dropBtn');
+  const balanceEl = document.getElementById('balance');
+  const streakEl  = document.getElementById('streak');
+
+  // DPR and size
+  let DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
+  let W=0, H=0; const TAU = Math.PI*2;
+
+  // Geometry & physics
+  const TOP_START_COUNT = 3; // flat top: first row has 3 pegs
+  let rows = parseInt(rowsEl.value,10);
+  let pegs=[], slots=[], balls=[];
+  let leftPad=0, rightPad=0; // space for sidebars
+  let topOffset = 68; // px
+  let pegSpacingX=30, pegSpacingY=34, pegRadius=5;
+
+  // Trapezoid frame points
+  let topLeft={x:0,y:0}, topRight={x:0,y:0}, baseLeft={x:0,y:0}, baseRight={x:0,y:0};
+  let nLeft={x:0,y:0}, nRight={x:0,y:0}; // inward normals for side walls
+
+  // Anti-stick physics
+  const GRAVITY=0.31; const RESTITUTION=0.50; const TANGENTIAL=0.88; const WALL_REST=0.40; const AIR_DRAG=0.010; const JITTER=0.10; const MAX_VX=1.6; const SPAWN_HEIGHT=60; const INITIAL_VY=0.65; const MIN_VY_AFTER_HIT=0.12;
+
+  // State
+  let auto=false, lastDrop=0, dropInterval=260; // slightly slower on mobile
+  let balance=1000, streak=1;
+
+  // RNG
+  let rng = mulberry32(Date.now()>>>0);
+
+  // Board scale/translation to fit vertically
+  let boardScale=1, tx=0, ty=0, boardHeightEst=0, availW=0;
+
+  // ===== Size & layout =====
+  function size(){
+    const cssW = window.innerWidth; const cssH = window.innerHeight;
+    canvas.style.width = cssW+'px'; canvas.style.height = cssH+'px';
+    canvas.width = Math.floor(cssW*DPR); canvas.height = Math.floor(cssH*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    W = cssW; H = cssH;
+
+    const leftW  = Math.ceil(L.getBoundingClientRect().width);
+    const rightW = Math.ceil(R.getBoundingClientRect().width);
+    leftPad  = leftW + 10; rightPad = rightW + 10;
+
+    buildBoard();
+    computeBoardScale();
+  }
+  addEventListener('resize', size, {passive:true});
+  addEventListener('orientationchange', ()=> setTimeout(size, 100));
+
+  // ===== Build board with flat 3-peg top =====
+  function inwardNormal(ax,ay,bx,by){ let nx=-(by-ay), ny=(bx-ax); const len=Math.hypot(nx,ny)||1; nx/=len; ny/=len; const cx=(ax+bx)/2, cy=(ay+by)/2; const toC = (W/2-cx)*nx + (H/2-cy)*ny; if(toC<0){ nx=-nx; ny=-ny; } return {x:nx,y:ny}; }
+
+  function buildBoard(){
+    rows = parseInt(rowsEl.value,10); rowsLabel.textContent = rows;
+    pegs.length=0; slots.length=0;
+
+    availW = Math.max(220, W - leftPad - rightPad);
+    pegSpacingY = Math.min(44, Math.max(24, Math.floor((H-220)/rows)));
+    pegSpacingX = Math.min(48, Math.max(22, Math.floor(availW/(TOP_START_COUNT + rows))));
+    pegRadius   = Math.max(4, Math.min(6, Math.floor(Math.min(pegSpacingX,pegSpacingY)*0.22)));
+    topOffset   = Math.max(54, Math.min(110, Math.floor(H*0.10)));
+
+    const firstCount = TOP_START_COUNT;
+    const lastCount  = TOP_START_COUNT + rows - 1;
+    const baseY = topOffset + (rows-1)*pegSpacingY + 36;
+
+    const firstRowWidth = (firstCount-1)*pegSpacingX;
+    const centerX = leftPad + availW/2;
+    topLeft  = {x: centerX - firstRowWidth/2 - 12, y: topOffset};
+    topRight = {x: centerX + firstRowWidth/2 + 12, y: topOffset};
+
+    const lastRowWidth = (lastCount-1)*pegSpacingX;
+    baseLeft  = {x: centerX - lastRowWidth/2 - 16, y: baseY};
+    baseRight = {x: centerX + lastRowWidth/2 + 16, y: baseY};
+
+    nLeft  = inwardNormal(topLeft.x, topLeft.y, baseLeft.x, baseLeft.y);
+    nRight = inwardNormal(topRight.x, topRight.y, baseRight.x, baseRight.y);
+
+    for(let r=0;r<rows;r++){
+      const count = firstCount + r; const y = topOffset + r*pegSpacingY;
+      const rowWidth=(count-1)*pegSpacingX; const startX=centerX - rowWidth/2;
+      for(let c=0;c<count;c++) pegs.push({x:startX + c*pegSpacingX, y, r:pegRadius});
+    }
+
+    const nSlots=lastCount+1; const slotW=pegSpacingX; const startX = centerX - (nSlots-1)*slotW/2;
+    for(let i=0;i<nSlots;i++) slots.push({x:startX + i*slotW, y: baseY, w: slotW, mult:1});
+    updateMultipliers();
+
+    boardHeightEst = baseY + 64; // add some room for slot chips
+  }
+
+  function computeBoardScale(){
+    const maxH = H - 16; // padding
+    boardScale = Math.min(1, maxH / boardHeightEst);
+    const scaledBoardW = (W - leftPad - rightPad) * boardScale;
+    tx = leftPad + ((W - leftPad - rightPad) - scaledBoardW)/2 - leftPad*(boardScale-1);
+    ty = Math.max(8, (H - boardHeightEst*boardScale)/2);
+  }
+
+  // ===== Multipliers sized to slots =====
+  const factCache={}; function fact(n){ if(factCache[n]) return factCache[n]; let r=1; for(let i=2;i<=n;i++) r*=i; return factCache[n]=r; }
+  const comb=(n,k)=> fact(n)/(fact(k)*fact(n-k));
+  function binom(n,k,p){ return comb(n,k)*Math.pow(p,k)*Math.pow(1-p,n-k); }
+  function buildMultipliers(effectiveRows, risk){
+    const nSlots=effectiveRows+1; const nRows=effectiveRows; const probs=[]; for(let k=0;k<nSlots;k++) probs.push(binom(nRows,k,0.5));
+    let edgeBoost, centerPenalty; if(risk==='high'){edgeBoost=4.2;centerPenalty=0.52;} else if(risk==='low'){edgeBoost=2.1;centerPenalty=0.86;} else {edgeBoost=3.0;centerPenalty=0.70;}
+    const mid=(nSlots-1)/2, raw=[]; for(let k=0;k<nSlots;k++){ const d=Math.abs(k-mid)/mid; const shape=1+d*(edgeBoost-1); const centerAdj=1-(1-centerPenalty)*(1-d); raw.push(shape*centerAdj); }
+    const rtp=0.98; let expected=0; for(let i=0;i<nSlots;i++) expected += probs[i]*raw[i]; const scale=rtp/expected;
+    return raw.map(v=>{ const m=Math.max(0.1, Math.round(v*scale*100)/100); if(m>=10) return Math.round(m); if(m>=5) return Math.round(m*2)/2; return Math.round(m*10)/10; });
+  }
+  function updateMultipliers(){
+    const effectiveRows = TOP_START_COUNT + rows - 1;
+    const arr=buildMultipliers(effectiveRows, riskEl.value);
+    for (let i=0;i<slots.length;i++) slots[i].mult=arr[i]||arr[arr.length-1];
+  }
+
+  // ===== Physics =====
+  function collideEdge(ball, A, n){
+    const d=(ball.x-A.x)*n.x + (ball.y-A.y)*n.y; const pen=ball.r - d; if(pen>0){
+      ball.x += n.x*pen; ball.y += n.y*pen;
+      const vdot = ball.vx*n.x + ball.vy*n.y; // normal
+      const tx=-n.y, ty=n.x; const vtan = ball.vx*tx + ball.vy*ty; // tangent
+      const vn = -WALL_REST*vdot; const vt = vtan*TANGENTIAL;
+      ball.vx = tx*vt + (ball.vx - vdot*n.x) + vn*n.x;
+      ball.vy = ty*vt + (ball.vy - vdot*n.y) + vn*n.y;
+      if(ball.vy < MIN_VY_AFTER_HIT) ball.vy = MIN_VY_AFTER_HIT;
+    }
+  }
+
+  class Ball{
+    constructor(x,y){ this.x=x; this.y=y; this.r=Math.max(4,pegRadius); this.vx=(rng()-0.5)*0.8; this.vy=INITIAL_VY; this.done=false; this.trail=[]; }
+    step(){ if(this.done) return;
+      this.vy += GRAVITY; this.vx *= (1-AIR_DRAG); this.vy *= (1-AIR_DRAG*0.5);
+      this.x += this.vx; this.y += this.vy;
+      // collide with trapezoid sides
+      collideEdge(this, topLeft,  nLeft);
+      collideEdge(this, topRight, nRight);
+      // peg collisions
+      for(const p of pegs){ const dx=this.x-p.x, dy=this.y-p.y; const dist=Math.hypot(dx,dy), minD=this.r+p.r; if(dist<minD){ const nx=dx/(dist||1), ny=dy/(dist||1); const overlap=minD-dist+0.004; this.x+=nx*overlap; this.y+=ny*overlap; const vdot=this.vx*nx + this.vy*ny; if(vdot<0){ this.vx -= (1+RESTITUTION)*vdot*nx; this.vy -= (1+RESTITUTION)*vdot*ny; } const tx=-ny, ty=nx; const vtan=this.vx*tx + this.vy*ty; const vnorm=this.vx*nx + this.vy*ny; const vtanD=vtan*TANGENTIAL; this.vx = tx*vtanD + nx*vnorm; this.vy = ty*vtanD + ny*vnorm; this.vx += (rng()-0.5)*JITTER; if(this.vy < MIN_VY_AFTER_HIT) this.vy = MIN_VY_AFTER_HIT; if(Math.abs(this.vx)>MAX_VX) this.vx=Math.sign(this.vx)*MAX_VX; } }
+      const floorY = baseLeft.y + 2; if(this.y>floorY) this.land();
+    }
+    land(){ this.done=true; let idx=0,md=1e9; for(let i=0;i<slots.length;i++){ const d=Math.abs(this.x - slots[i].x); if(d<md){ md=d; idx=i; } } const mult=slots[idx].mult; const bet=Math.max(0.1, parseFloat(betEl.value||'1')); const win=bet*mult*streak; balance+=win; streak=(mult>=5)?(streak+1):1; renderHUD(); setTimeout(()=>{ const j=balls.indexOf(this); if(j>=0) balls.splice(j,1); }, 120); }
+    draw(){ drawBall(this); }
+  }
+
+  // ===== UI actions =====
+  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; updateDropBtn(); }
+  function updateDropBtn(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); dropBtn.disabled = balance < bet; }
+  function drop(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); if(balance<bet) return; balance-=bet; renderHUD(); const spread=pegSpacingX*0.30; const centerX=(topLeft.x+topRight.x)/2; const spawnX = centerX + (rng()-0.5)*spread; const spawnY = topLeft.y - SPAWN_HEIGHT; balls.push(new Ball(spawnX,spawnY)); }
+
+  manualBtn.addEventListener('click',()=>{ auto=false; manualBtn.classList.add('active'); autoBtn.classList.remove('active'); });
+  autoBtn  .addEventListener('click',()=>{ auto=!auto; autoBtn.classList.toggle('active',auto); manualBtn.classList.toggle('active',!auto); });
+  dropBtn  .addEventListener('click', drop);
+  canvas   .addEventListener('pointerdown',(e)=>{ if(e.clientY < window.innerHeight*0.35) drop(); });
+  betHalf  .addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)/2).toFixed(2); updateDropBtn(); });
+  betDouble.addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)*2).toFixed(2); updateDropBtn(); });
+  betEl    .addEventListener('input', updateDropBtn);
+  riskEl   .addEventListener('change',()=>{ updateMultipliers(); draw(); });
+  rowsEl   .addEventListener('input',()=>{ buildBoard(); computeBoardScale(); draw(); });
+
+  // ===== Draw helpers =====
+  function drawBackground(){
+    ctx.setTransform(DPR*boardScale,0,0,DPR*boardScale, tx*DPR, ty*DPR);
+    ctx.clearRect(-tx, -ty, W, H);
+    const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#09162e'); g.addColorStop(1,'#070f22'); ctx.fillStyle=g; ctx.fillRect(-tx, -ty, W, H);
+    ctx.strokeStyle='rgba(156,209,255,.38)'; ctx.lineWidth=1.6/boardScale; ctx.beginPath();
+    ctx.moveTo(topLeft.x, topLeft.y);
+    ctx.lineTo(baseLeft.x, baseLeft.y);
+    ctx.lineTo(baseRight.x, baseRight.y);
+    ctx.lineTo(topRight.x, topRight.y);
+    ctx.closePath();
+    ctx.stroke();
+  }
+  function drawPeg(p){
+    ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.shadowColor='rgba(130,170,255,.45)'; ctx.shadowBlur=8; ctx.beginPath(); ctx.arc(p.x,p.y,p.r*0.9,0,TAU); ctx.fillStyle='rgba(130,170,255,.18)'; ctx.fill(); ctx.restore();
+    const grad = ctx.createRadialGradient(p.x-2,p.y-2,1, p.x,p.y, p.r+5); grad.addColorStop(0,'#f4fbff'); grad.addColorStop(.35,'#cfe2ff'); grad.addColorStop(1,'#2b4c80');
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,TAU); ctx.fillStyle=grad; ctx.fill();
+  }
+  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  function chipColor(i,n){ const t=Math.abs(i-(n-1)/2)/((n-1)/2); if(t>0.85) return getCSS('--chipRed'); if(t>0.70) return getCSS('--chipOrange'); if(t>0.50) return getCSS('--chipAmber'); if(t>0.30) return getCSS('--chipYellow'); return getCSS('--chipPale'); }
+  function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+  function shade(hex, amt){ const c=parseInt(hex.slice(1),16); let r=(c>>16)&255,g=(c>>8)&255,b=c&255; r=Math.min(255,Math.max(0,r+amt)); g=Math.min(255,Math.max(0,g+amt)); b=Math.min(255,Math.max(0,b+amt)); return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
+  function formatMult(m){ const v=+m; return (v>=10?Math.round(v):v.toFixed(1))+'x'; }
+  function drawSlots(){ const y = (slots[0]?.y || (topOffset + (rows-1)*pegSpacingY + 36)) + 6; const h=28; for(let i=0;i<slots.length;i++){ const s=slots[i]; const x=s.x - (s.w-8)/2, w=s.w-8; const col=chipColor(i,slots.length); ctx.save(); ctx.shadowColor='rgba(0,0,0,.4)'; ctx.shadowBlur=10; roundRect(x,y,w,h,9); const gg=ctx.createLinearGradient(0,y,0,y+h); gg.addColorStop(0, shade(col, 14)); gg.addColorStop(1, col); ctx.fillStyle=gg; ctx.fill(); ctx.restore(); ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke(); ctx.save(); ctx.globalAlpha=.25; roundRect(x+2,y+2,w-4,h*.42,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.restore(); const label=formatMult(s.mult); ctx.font=`800 ${12/boardScale}px ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle=(i<2||i>slots.length-3)?'#fff':'#1a1400'; ctx.fillText(label, x+w/2, y+h/2+0.5); } }
+  function drawBall(b){ if(!b.trail) b.trail=[]; b.trail.push({x:b.x,y:b.y}); if(b.trail.length>10) b.trail.shift(); ctx.save(); ctx.globalCompositeOperation='lighter'; for(let i=0;i<b.trail.length;i++){ const t=b.trail[i], a=i/b.trail.length; ctx.globalAlpha=0.08+a*0.14; ctx.beginPath(); ctx.arc(t.x,t.y,b.r*(0.7+a*0.5),0,TAU); ctx.fillStyle='rgba(156,209,255,.55)'; ctx.fill(); } ctx.restore(); ctx.globalAlpha=1; const grad=ctx.createRadialGradient(b.x-2,b.y-3,1.5,b.x,b.y,b.r+7); grad.addColorStop(0,'#ffffff'); grad.addColorStop(.25,'#cfe6ff'); grad.addColorStop(1,'#2b4a7d'); ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fillStyle=grad; ctx.fill(); }
+
+  function draw(){ drawBackground(); for(const p of pegs) drawPeg(p); drawSlots(); balls.forEach(b=> b.draw()); }
+  function update(){ const now=performance.now(); if(auto && now-lastDrop>dropInterval){ drop(); lastDrop=now; } balls.forEach(b=> b.step()); }
+  function loop(){ update(); draw(); requestAnimationFrame(loop); }
+
+  // ===== Utils =====
+  function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;}}
+
+  // Init
+  function init(){ size(); renderHUD(); loop(); }
+  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; updateDropBtn(); }
+  init();
+})();
