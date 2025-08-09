@@ -1,0 +1,8 @@
+{
+  "name": "fakeplinko",
+  "version": "1.0.0",
+  "description": "Plinko game demo",
+  "scripts": {
+    "test": "echo 'No tests specified'"
+  }
+}
