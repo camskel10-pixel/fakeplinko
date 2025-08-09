@@ -1,25 +1,78 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Plinko — Responsive Vertical Fit (PC + Mobile)</title>
-<link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plinko Deluxe</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- Left controls -->
+  <aside id="left" class="side">
+    <div class="card">
+      <div class="title">Mode</div>
+      <div class="seg">
+        <button id="manualBtn" class="active">Manual</button>
+        <button id="autoBtn">Auto</button>
+      </div>
+    </div>
 
-  <!-- Left controls (selectors on the side) -->
-  <aside id="left" class="side" aria-label="Controls">
-    <!-- left panel content -->
+    <div class="card">
+      <div class="title">Bet</div>
+      <div class="row">
+        <button id="betHalf" class="btn dark">½</button>
+        <input id="bet" type="number" min="0.1" step="0.1" value="1.0" />
+        <button id="betDouble" class="btn dark">2×</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">Risk</div>
+      <select id="risk">
+        <option value="low">Low</option>
+        <option value="medium" selected>Medium</option>
+        <option value="high">High</option>
+        <option value="extreme">Extreme</option>
+        <option value="safe">Safe</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="title">Rows <span id="rowsLabel"></span></div>
+      <input id="rows" type="range" min="8" max="16" value="16" />
+    </div>
+
+    <div class="card">
+      <div class="title">Pattern</div>
+      <select id="pattern">
+        <option value="normal">Normal</option>
+        <option value="zigzag">Zigzag</option>
+        <option value="wide">Wide</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="title">Ball Color</div>
+      <input type="color" id="ballColor" value="#9cd1ff" />
+    </div>
+
+    <button id="dropBtn" class="btn green">Drop Ball</button>
   </aside>
 
-  <!-- Right info (stats + power-ups legend) -->
-  <aside id="right" class="side" aria-label="Stats and Power-ups">
-    <!-- right panel content -->
+  <!-- Right panel -->
+  <aside id="right" class="side">
+    <div class="card stat">Balance<br><span id="balance">$1000.00</span></div>
+    <div class="card stat">Streak<br><span id="streak">x1</span></div>
+
+    <div class="card">
+      <div class="title">Leaderboard</div>
+      <ul id="leaderboard"></ul>
+    </div>
   </aside>
 
-  <canvas id="stage" aria-label="Plinko board (tap near the top to drop)"></canvas>
+  <!-- Main game -->
+  <canvas id="stage"></canvas>
 
-<script src="game.js" defer></script>
+  <script src="game.js" defer></script>
 </body>
 </html>
