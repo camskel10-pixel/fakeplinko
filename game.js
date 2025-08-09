@@ -41,13 +41,13 @@
 
   loadSaveIntoUI();
 
-  // Geometry & physics (render-time derived)
+  // Geometry & physics
   let pegs=[], slots=[], balls=[];
   let leftPad=0, rightPad=0;
   let topOffset = 68;
   let pegSpacingX=30, pegSpacingY=34, pegRadius=5;
 
-  // Trapezoid
+  // Trapezoid frame points
   let topLeft={x:0,y:0}, topRight={x:0,y:0}, baseLeft={x:0,y:0}, baseRight={x:0,y:0};
   let nLeft={x:0,y:0}, nRight={x:0,y:0};
 
@@ -96,7 +96,7 @@
 
     availW = Math.max(220, W - leftPad - rightPad);
     pegSpacingY = Math.min(44, Math.max(24, Math.floor((H-220)/settings.rows)));
-    pegSpacingX = Math.min(48, Math.max(22, Math.floor(availW/(3 + settings.rows)))); // room for flat-3
+    pegSpacingX = Math.min(48, Math.max(22, Math.floor(availW/(3 + settings.rows))));
     pegRadius   = Math.max(4, Math.min(6, Math.floor(Math.min(pegSpacingX,pegSpacingY)*0.22)));
     topOffset   = Math.max(54, Math.min(110, Math.floor(H*0.10)));
 
