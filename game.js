@@ -287,8 +287,8 @@
   function computeGeometry() {
     // Build a true triangular board whose top width matches the first peg row
     const rows = state.rows;
-    const gapX = 24; // horizontal spacing between pegs
-    const gapY = 26; // vertical spacing (for height)
+    const gapX = 36; // horizontal spacing between pegs (increased)
+    const gapY = Math.round(gapX * Math.sqrt(3) / 2); // vertical spacing for equilateral triangle
 
     // Top row: 3 pegs for all non-"point" patterns
     const topCount = (state.pattern === 'point') ? 1 : 3;
@@ -298,8 +298,8 @@
     const bottomPegWidth = Math.max(0, (bottomCount - 1) * gapX);
 
     // Add a little horizontal breathing room so balls don't clip edges
-    const padTopX = 40;
-    const padBottomX = 120;
+    const padTopX = 80; // extra margin left/right at the top
+    const padBottomX = 180; // extra margin left/right at the bottom
 
     const topWidth = topPegWidth + padTopX;
     const bottomWidth = bottomPegWidth + padBottomX;
@@ -317,6 +317,7 @@
     // Slots aligned to bottom width
     const effRows = effectiveRows();
     const slotCount = effRows + 1;
+    // ensure slots align with bottom peg spacing
     const slotGap = (trapezoid.rightBottom - trapezoid.leftBottom) / slotCount;
     slots = [];
     for (let i = 0; i < slotCount; i++) {
@@ -338,8 +339,8 @@
     pegs = [];
     const rows = state.rows;
     const effRows = effectiveRows();
-    const gapY = 26;
-    const gapX = 24;
+    const gapX = 36;
+    const gapY = Math.round(gapX * Math.sqrt(3) / 2);
     const startY = SPAWN_HEIGHT;
 
     // Patterns
@@ -361,9 +362,7 @@
       for (let c = 0; c < count; c++) {
         const totalWidth = (count - 1) * gapX;
         let x = -totalWidth / 2 + c * gapX + bias;
-        // Stagger odd rows
-        if (r % 2 === 1) x += gapX * 0.5;
-        pegs.push({ x, y: rowY, r: 6 });
+        pegs.push({ x, y: rowY, r: 5 });
       }
     }
 
