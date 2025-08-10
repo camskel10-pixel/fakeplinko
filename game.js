@@ -316,7 +316,8 @@
     const bottomWidth = bottomPegWidth + padBottomX;
 
     // Height to include spawn area + all rows + slot area
-    const height = SPAWN_HEIGHT + (rows - 1) * gapY + 120;
+    const gridRowsForHeight = ((state.shape || 'triangle') === 'triangle') ? rows : (rows + 2);
+    const height = SPAWN_HEIGHT + (gridRowsForHeight - 1) * gapY + 120;
 
     trapezoid.top = 0;
     trapezoid.bottom = height;
