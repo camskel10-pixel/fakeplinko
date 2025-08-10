@@ -1,390 +1,588 @@
-(() => {
-  // DOM
-  const canvas = document.getElementById('stage');
-  const ctx = canvas.getContext('2d');
-  const L = document.getElementById('left');
-  const R = document.getElementById('right');
+(function () {
+  // ===== Canvas setup =====
+  const canvas = document.getElementById('board');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const DPR = Math.max(1, window.devicePixelRatio || 1);
 
-  // UI refs
-  const manualBtn = document.getElementById('manualBtn');
-  const autoBtn   = document.getElementById('autoBtn');
-  const betEl     = document.getElementById('bet');
-  const betHalf   = document.getElementById('betHalf');
-  const betDouble = document.getElementById('betDouble');
-  const riskEl    = document.getElementById('risk');
-  const patternEl = document.getElementById('pattern');
-  const rowsEl    = document.getElementById('rows');
-  const rowsLabel = document.getElementById('rowsLabel');
-  const dropBtn   = document.getElementById('dropBtn');
-  const balanceEl = document.getElementById('balance');
-  const streakEl  = document.getElementById('streak');
-  const lbList    = document.getElementById('lbList');
-  const resetBtn  = document.getElementById('resetBtn');
-  const chipsWrap = document.getElementById('ballColors');
+  // ===== Game state =====
+  let rows = 16, bet = 1.0, balance = 1000, risk = 'medium', mode = 'manual';
+  let auto = false, lastDrop = 0, dropInterval = 320, combo = 1;
+  let balls = [], pegs = [], slots = [];
+  let rng = mulberry32(Date.now() % 2 ** 32);
 
-  // DPR & canvas size
-  let DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
-  let W=0, H=0; const TAU = Math.PI*2;
+  // Ball themes (real swatches shown in the selector)
+  const BALL_THEMES = [
+    { key: 'Sky',    fill: '#57a9ff', trail: 'rgba(87,169,255,0.23)' },
+    { key: 'Neon',   fill: '#3ef3ff', trail: 'rgba(62,243,255,0.23)' },
+    { key: 'Sun',    fill: '#ffd351', trail: 'rgba(255,211,81,0.23)' },
+    { key: 'Rose',   fill: '#ff6fa3', trail: 'rgba(255,111,163,0.23)' },
+    { key: 'Violet', fill: '#9c7bff', trail: 'rgba(156,123,255,0.23)' },
+    { key: 'Lime',   fill: '#6dff6a', trail: 'rgba(109,255,106,0.23)' },
+  ];
+  let ballTheme = BALL_THEMES[0];
 
-  // Settings / Save
-  const SAVE_KEY = 'plinko.save.v2';
-  let settings = {
-    risk: (riskEl.value),
-    pattern: (patternEl.value),
-    rows: parseInt(rowsEl.value,10),
-    bet: parseFloat(betEl.value)||1,
-    ballColor: '#8cb6ff',
-    balance: 1000,
-    streak: 1,
-    leaderboard: [] // {payout, mult, rows, risk, date}
-  };
+  // ===== Physics =====
+  let gravity = 0.26, restitution = 0.5, wallRest = 0.38, friction = 0.008, maxVX = 1.6;
+  const MIN_DOWN_VY = 0.18;
+  const JITTER = 0.08;
+  const APEX_GUARD_Y_OFFSET = 6; // spawn below apex by this many px (scaled by DPR)
 
-  loadSaveIntoUI();
+  // ===== Layout / UI state =====
+  let boardRect = { x: 0, y: 0, w: 0, h: 0 };
+  let isMobile = false;          // mobile collapses side panel into a rail + overlay
+  let sideW = 320 * DPR;         // desktop side panel width
+  const railW = 58 * DPR;        // mobile rail width
+  let overlayOpen = false;       // mobile overlay panel open?
 
-  // Geometry & physics
-  let pegs=[], slots=[], balls=[];
-  let leftPad=0, rightPad=0;
-  let topOffset = 68;
-  let pegSpacingX=30, pegSpacingY=34, pegRadius=5;
+  // Click zones (in-canvas)
+  class Rect { constructor(x, y, w, h) { this.x = x; this.y = y; this.w = w; this.h = h; } contains(px, py) { return px >= this.x && py >= this.y && px <= this.x + this.w && py <= this.y + this.h; } }
+  const R = {}; // named rects, set in layoutUI()
 
-  // Trapezoid frame points
-  let topLeft={x:0,y:0}, topRight={x:0,y:0}, baseLeft={x:0,y:0}, baseRight={x:0,y:0};
-  let nLeft={x:0,y:0}, nRight={x:0,y:0};
+  // Geometry shared
+  const GEOM = { pegSpacingX: 40 * DPR, pegSpacingY: 38 * DPR, pegRadius: 6 * DPR, apex: { x: 0, y: 0 }, left: { x: 0, y: 0 }, right: { x: 0, y: 0 }, nLeft: { x: 0, y: 0 }, nRight: { x: 0, y: 0 } };
 
-  // Physics constants
-  const GRAVITY=0.31, RESTITUTION=0.50, TANGENTIAL=0.88, WALL_REST=0.40, AIR_DRAG=0.010;
-  const JITTER=0.10, MAX_VX=1.6, SPAWN_HEIGHT=60, INITIAL_VY=0.65, MIN_VY_AFTER_HIT=0.12;
+  // ===== Responsive sizing =====
+  function sizeCanvas() {
+    // fit to CSS size
+    canvas.width = Math.floor(canvas.clientWidth * DPR);
+    canvas.height = Math.floor(canvas.clientHeight * DPR);
 
-  // State
-  let auto=false, lastDrop=0, dropInterval=260;
-  let balance=settings.balance, streak=settings.streak;
+    // Heuristic for mobile (iPhone 15 Pro included)
+    isMobile = Math.min(window.innerWidth, window.innerHeight) < 700;
 
-  // RNG
-  let rng = mulberry32(Date.now()>>>0);
+    if (isMobile) {
+      sideW = railW;
+      boardRect.x = sideW + 12 * DPR;
+      boardRect.w = canvas.width - boardRect.x - 12 * DPR;
+    } else {
+      sideW = Math.max(280 * DPR, Math.min(360 * DPR, Math.floor(canvas.width * 0.28)));
+      boardRect.x = sideW + 18 * DPR;
+      boardRect.w = canvas.width - boardRect.x - 18 * DPR;
+    }
+    boardRect.y = 14 * DPR;
+    boardRect.h = canvas.height - boardRect.y - 12 * DPR;
 
-  // Board scaling
-  let boardScale=1, tx=0, ty=0, boardHeightEst=0, availW=0;
-
-  // ===== Size & layout =====
-  function size(){
-    const cssW = window.innerWidth; const cssH = window.innerHeight;
-    canvas.style.width = cssW+'px'; canvas.style.height = cssH+'px';
-    canvas.width = Math.floor(cssW*DPR); canvas.height = Math.floor(cssH*DPR);
-    ctx.setTransform(DPR,0,0,DPR,0,0);
-    W = cssW; H = cssH;
-
-    const leftW  = Math.ceil(L.getBoundingClientRect().width);
-    const rightW = Math.ceil(R.getBoundingClientRect().width);
-    leftPad = leftW + 10; rightPad = rightW + 10;
+    // Peg spacing computed from board height & rows
+    const pegSpacingY = Math.min(46 * DPR, Math.max(30 * DPR, Math.floor((boardRect.h - 210 * DPR) / rows)));
+    const pegSpacingX = Math.min(52 * DPR, Math.max(28 * DPR, Math.floor(boardRect.w / (rows + 1))));
+    const pegRadius = Math.max(5 * DPR, Math.min(7 * DPR, Math.floor(pegSpacingX * 0.14)));
+    GEOM.pegSpacingY = pegSpacingY; GEOM.pegSpacingX = pegSpacingX; GEOM.pegRadius = pegRadius;
 
     buildBoard();
-    computeBoardScale();
+    layoutUI();
   }
-  addEventListener('resize', size, {passive:true});
-  addEventListener('orientationchange', ()=> setTimeout(size, 100));
+  window.addEventListener('resize', sizeCanvas);
+  window.addEventListener('orientationchange', () => setTimeout(sizeCanvas, 150));
 
-  // ===== Board builder (supports patterns) =====
-  function inwardNormal(ax,ay,bx,by){
-    let nx=-(by-ay), ny=(bx-ax); const len=Math.hypot(nx,ny)||1; nx/=len; ny/=len;
-    const cx=(ax+bx)/2, cy=(ay+by)/2; const toC = (W/2-cx)*nx + (H/2-cy)*ny; if(toC<0){ nx=-nx; ny=-ny; }
-    return {x:nx,y:ny};
-  }
+  // ===== Board build =====
+  function buildBoard() {
+    pegs.length = 0; slots.length = 0;
 
-  function buildBoard(){
-    settings.rows = parseInt(rowsEl.value,10); rowsLabel.textContent = settings.rows;
-    pegs.length=0; slots.length=0;
-
-    availW = Math.max(220, W - leftPad - rightPad);
-    pegSpacingY = Math.min(44, Math.max(24, Math.floor((H-220)/settings.rows)));
-    pegSpacingX = Math.min(48, Math.max(22, Math.floor(availW/(3 + settings.rows))));
-    pegRadius   = Math.max(4, Math.min(6, Math.floor(Math.min(pegSpacingX,pegSpacingY)*0.22)));
-    topOffset   = Math.max(54, Math.min(110, Math.floor(H*0.10)));
-
-    let firstCount = 3; // default flat-3
-    if(settings.pattern==='point') firstCount = 1;
-
-    const lastCount  = (settings.pattern==='point') ? (settings.rows) : (3 + settings.rows - 1);
-    const baseY = topOffset + (settings.rows-1)*pegSpacingY + 36;
-
-    const centerX = leftPad + availW/2;
-    const firstRowWidth = (firstCount-1)*pegSpacingX;
-    topLeft  = {x: centerX - firstRowWidth/2 - 12, y: topOffset};
-    topRight = {x: centerX + firstRowWidth/2 + 12, y: topOffset};
-
-    const lastRowWidth = (lastCount-1)*pegSpacingX;
-    baseLeft  = {x: centerX - lastRowWidth/2 - 16, y: baseY};
-    baseRight = {x: centerX + lastRowWidth/2 + 16, y: baseY};
-
-    nLeft  = inwardNormal(topLeft.x, topLeft.y, baseLeft.x, baseLeft.y);
-    nRight = inwardNormal(topRight.x, topRight.y, baseRight.x, baseRight.y);
-
-    // Build pegs by pattern
-    for(let r=0;r<settings.rows;r++){
-      let count = (settings.pattern==='point') ? (1 + r) : (3 + r);
-      const y = topOffset + r*pegSpacingY;
-      const rowWidth=(count-1)*pegSpacingX;
-      // bias offsets
-      let bias = 0;
-      if(settings.pattern==='leanL') bias = -r*0.18*pegSpacingX;
-      if(settings.pattern==='leanR') bias =  r*0.18*pegSpacingX;
-
-      const startX=centerX - rowWidth/2 + bias;
-      for(let c=0;c<count;c++){
-        // sparse removes some pegs
-        if(settings.pattern==='sparse' && (r>1) && rng()<0.12) continue;
-        pegs.push({x:startX + c*pegSpacingX, y, r:pegRadius});
-      }
+    // pegs
+    for (let r = 0; r < rows; r++) {
+      const count = r + 1;
+      const y = boardRect.y + 70 * DPR + r * GEOM.pegSpacingY;
+      const rowWidth = (count - 1) * GEOM.pegSpacingX;
+      const startX = boardRect.x + boardRect.w / 2 - rowWidth / 2;
+      for (let c = 0; c < count; c++) pegs.push({ x: startX + c * GEOM.pegSpacingX, y, r: GEOM.pegRadius });
     }
 
-    // Slots align to last row spacing
-    const nSlots=lastCount+1; const slotW=pegSpacingX; const startX = centerX - (nSlots-1)*slotW/2;
-    for(let i=0;i<nSlots;i++) slots.push({x:startX + i*slotW, y: baseY, w: slotW, mult:1});
+    // triangle walls
+    const baseY = boardRect.y + 70 * DPR + rows * GEOM.pegSpacingY + 36 * DPR;
+    const widest = (rows - 1) * GEOM.pegSpacingX;
+    GEOM.apex = { x: boardRect.x + boardRect.w / 2, y: boardRect.y + 28 * DPR };
+    GEOM.left = { x: boardRect.x + boardRect.w / 2 - widest / 2 - GEOM.pegSpacingX * 0.5, y: baseY };
+    GEOM.right = { x: boardRect.x + boardRect.w / 2 + widest / 2 + GEOM.pegSpacingX * 0.5, y: baseY };
+    GEOM.nLeft = inwardNormal(GEOM.apex, GEOM.left);
+    GEOM.nRight = inwardNormal(GEOM.apex, GEOM.right);
 
+    // slots
+    const nSlots = rows + 1, slotW = GEOM.pegSpacingX;
+    const startX = boardRect.x + boardRect.w / 2 - (nSlots - 1) * slotW / 2;
+    for (let i = 0; i < nSlots; i++) slots.push({ x: startX + i * slotW, y: baseY, w: slotW, mult: 1 });
     updateMultipliers();
-    boardHeightEst = baseY + 64;
-  }
-
-  function computeBoardScale(){
-    const maxH = H - 16;
-    boardScale = Math.min(1, maxH / boardHeightEst);
-    const scaledBoardW = (W - leftPad - rightPad) * boardScale;
-    tx = leftPad + ((W - leftPad - rightPad) - scaledBoardW)/2 - leftPad*(boardScale-1);
-    ty = Math.max(8, (H - boardHeightEst*boardScale)/2);
   }
 
   // ===== Multipliers =====
-  const factCache={}; function fact(n){ if(factCache[n]) return factCache[n]; let r=1; for(let i=2;i<=n;i++) r*=i; return factCache[n]=r; }
-  const comb=(n,k)=> fact(n)/(fact(k)*fact(n-k));
-  function binom(n,k,p){ return comb(n,k)*Math.pow(p,k)*Math.pow(1-p,n-k); }
+  const factCache = {};
+  function fact(n) { if (factCache[n]) return factCache[n]; let r = 1; for (let i = 2; i <= n; i++) r *= i; return factCache[n] = r; }
+  const comb = (n, k) => fact(n) / (fact(k) * fact(n - k));
+  function binomialPMF(n, k, p) { return comb(n, k) * Math.pow(p, k) * Math.pow(1 - p, n - k); }
 
-  function buildMultipliers(effectiveRows, risk){
-    const nSlots=effectiveRows+1; const nRows=effectiveRows;
-    const probs=[]; for(let k=0;k<nSlots;k++) probs.push(binom(nRows,k,0.5));
-
-    // expanded risk mapping
+  function buildMultipliers(nRows, risk) {
+    const nSlots = nRows + 1, probs = [];
+    for (let k = 0; k < nSlots; k++) probs.push(binomialPMF(nRows, k, 0.5));
     let edgeBoost, centerPenalty;
-    switch(risk){
-      case 'verylow': edgeBoost=1.6; centerPenalty=0.95; break;
-      case 'low':     edgeBoost=2.1; centerPenalty=0.86; break;
-      case 'medium':  edgeBoost=3.0; centerPenalty=0.70; break;
-      case 'high':    edgeBoost=4.2; centerPenalty=0.52; break;
-      case 'extreme': edgeBoost=6.0; centerPenalty=0.40; break;
-      default:        edgeBoost=3.0; centerPenalty=0.70;
+    if (risk === 'high') { edgeBoost = 4.2; centerPenalty = 0.52; }
+    else if (risk === 'low') { edgeBoost = 2.1; centerPenalty = 0.86; }
+    else { edgeBoost = 3.0; centerPenalty = 0.70; }
+
+    const mid = (nSlots - 1) / 2, raw = [];
+    for (let k = 0; k < nSlots; k++) {
+      const d = Math.abs(k - mid) / mid;
+      raw.push((1 + d * (edgeBoost - 1)) * (1 - (1 - centerPenalty) * (1 - d)));
     }
 
-    const mid=(nSlots-1)/2, raw=[];
-    for(let k=0;k<nSlots;k++){
-      const d=Math.abs(k-mid)/Math.max(1,mid);
-      const shape=1+d*(edgeBoost-1);
-      const centerAdj=1-(1-centerPenalty)*(1-d);
-      raw.push(shape*centerAdj);
-    }
-
-    const rtp=0.98; let expected=0;
-    for(let i=0;i<nSlots;i++) expected += probs[i]*raw[i];
-    const scale=rtp/expected;
-
-    return raw.map(v=>{
-      const m=Math.max(0.1, Math.round(v*scale*100)/100);
-      if(m>=10) return Math.round(m);
-      if(m>=5)  return Math.round(m*2)/2;
-      return Math.round(m*10)/10;
+    const rtp = 0.98; let expected = 0; for (let i = 0; i < nSlots; i++) expected += probs[i] * raw[i];
+    const scale = rtp / expected;
+    return raw.map(v => {
+      const m = Math.max(0.1, Math.round((v * scale) * 100) / 100);
+      if (m >= 10) return Math.round(m);
+      if (m >= 5) return Math.round(m * 2) / 2;
+      return Math.round(m * 10) / 10;
     });
   }
-
-  function updateMultipliers(){
-    // effective rows is last peg count - 1
-    const effectiveRows = (settings.pattern==='point') ? (settings.rows-1) : (3 + settings.rows - 1);
-    const arr=buildMultipliers(effectiveRows, settings.risk || 'medium');
-    for (let i=0;i<slots.length;i++) slots[i].mult=arr[i]||arr[arr.length-1];
+  function updateMultipliers() {
+    const arr = buildMultipliers(rows, risk);
+    for (let i = 0; i < slots.length; i++) slots[i].mult = arr[i];
   }
 
-  // ===== Physics & Ball =====
-  function collideEdge(ball, A, n){
-    const d=(ball.x-A.x)*n.x + (ball.y-A.y)*n.y; const pen=ball.r - d; if(pen>0){
-      ball.x += n.x*pen; ball.y += n.y*pen;
-      const vdot = ball.vx*n.x + ball.vy*n.y;
-      const tx=-n.y, ty=n.x; const vtan = ball.vx*tx + ball.vy*ty;
-      const vn = -WALL_REST*vdot; const vt = vtan*TANGENTIAL;
-      ball.vx = tx*vt + (ball.vx - vdot*n.x) + vn*n.x;
-      ball.vy = ty*vt + (ball.vy - vdot*n.y) + vn*n.y;
-      if(ball.vy < MIN_VY_AFTER_HIT) ball.vy = MIN_VY_AFTER_HIT;
+  // ===== Physics =====
+  function inwardNormal(a, b) {
+    const abx = b.x - a.x, aby = b.y - a.y;
+    let nx = -aby, ny = abx;
+    const len = Math.hypot(nx, ny) || 1; nx /= len; ny /= len;
+    const cx = boardRect.x + boardRect.w / 2, cy = (a.y + b.y) / 2;
+    const d = (cx - a.x) * nx + (cy - a.y) * ny; if (d < 0) { nx = -nx; ny = -ny; }
+    return { x: nx, y: ny };
+  }
+  function collideWithSide(ball, a, n) {
+    // ignore the exact tip region; ensure downward movement after bounce
+    const tipGuard = 10 * DPR;
+    const nearTip = Math.hypot(ball.x - a.x, ball.y - a.y) < tipGuard;
+    const d = (ball.x - a.x) * n.x + (ball.y - a.y) * n.y;
+    const pen = ball.r - d;
+    if (pen > 0 && !nearTip) {
+      ball.x += n.x * pen;
+      ball.y += n.y * pen;
+      const vdot = ball.vx * n.x + ball.vy * n.y;
+      if (vdot < 0) {
+        ball.vx -= (1 + wallRest) * vdot * n.x;
+        ball.vy -= (1 + wallRest) * vdot * n.y;
+        ball.vy = Math.max(ball.vy, MIN_DOWN_VY);
+      }
+      if (Math.abs(ball.vx) > maxVX) ball.vx = Math.sign(ball.vx) * maxVX;
     }
   }
 
-  function collidePeg(ball, p){
-    const dx=ball.x-p.x, dy=ball.y-p.y; const dist=Math.hypot(dx,dy), minD=ball.r+p.r;
-    if(dist<minD){
-      const nx=dx/(dist||1), ny=dy/(dist||1);
-      const overlap=minD-dist+0.004; ball.x+=nx*overlap; ball.y+=ny*overlap;
-      const vdot=ball.vx*nx + ball.vy*ny; if(vdot<0){ ball.vx -= (1+RESTITUTION)*vdot*nx; ball.vy -= (1+RESTITUTION)*vdot*ny; }
-      const tx=-ny, ty=nx; const vtan=ball.vx*tx + ball.vy*ty; const vnorm=ball.vx*nx + ball.vy*ny; const vtanD=vtan*TANGENTIAL;
-      ball.vx = tx*vtanD + nx*vnorm; ball.vy = ty*vtanD + ny*vnorm;
-      ball.vx += (rng()-0.5)*JITTER; if(ball.vy < MIN_VY_AFTER_HIT) ball.vy = MIN_VY_AFTER_HIT;
-      if(Math.abs(ball.vx)>MAX_VX) ball.vx=Math.sign(ball.vx)*MAX_VX;
+  function Ball(x, y) {
+    this.x = x; this.y = y;
+    this.r = Math.max(5 * DPR, Math.min(7 * DPR, GEOM.pegRadius * 0.95));
+    this.vx = (rng() - 0.5) * 0.25; // small lateral
+    this.vy = 0.12;                 // initial downward nudge
+    this.done = false;
+    this.trail = [];
+  }
+  Ball.prototype.step = function (dt) {
+    if (this.done) return;
+
+    // anti-stick assist near apex
+    if (this.y < GEOM.apex.y + APEX_GUARD_Y_OFFSET * DPR) {
+      this.vy = Math.max(this.vy, MIN_DOWN_VY);
+      this.vx += (rng() - 0.5) * JITTER;
+    }
+
+    this.vy += gravity * dt;
+    this.vx *= (1 - friction * dt / 60);
+    this.vy *= (1 - friction * 0.3 * dt / 60);
+    this.x += this.vx; this.y += this.vy;
+
+    collideWithSide(this, GEOM.apex, GEOM.nLeft);
+    collideWithSide(this, GEOM.apex, GEOM.nRight);
+
+    // peg collisions
+    for (let i = 0; i < pegs.length; i++) {
+      const p = pegs[i];
+      const dx = this.x - p.x, dy = this.y - p.y, dist = Math.hypot(dx, dy), minD = this.r + p.r;
+      if (dist < minD) {
+        const nx = dx / (dist || 1), ny = dy / (dist || 1), overlap = minD - dist;
+        this.x += nx * overlap; this.y += ny * overlap;
+        const vdot = this.vx * nx + this.vy * ny;
+        if (vdot < 0) {
+          this.vx -= 2 * vdot * nx;
+          this.vy -= 2 * vdot * ny;
+          this.vx *= restitution; this.vy *= restitution;
+          this.vx += (rng() - 0.5) * 0.18;
+          this.vy = Math.max(this.vy, MIN_DOWN_VY);
+        }
+      }
+    }
+
+    // landed
+    const floorY = GEOM.left.y;
+    if (this.y > floorY) {
+      let idx = 0, best = 1e9;
+      for (let i = 0; i < slots.length; i++) {
+        const d = Math.abs(this.x - slots[i].x);
+        if (d < best) { best = d; idx = i; }
+      }
+      const mult = slots[idx].mult;
+      balance += bet * mult * combo;
+      combo = (mult >= 5) ? (combo + 1) : 1;
+      this.done = true;
+      setTimeout(() => {
+        const j = balls.indexOf(this);
+        if (j >= 0) balls.splice(j, 1);
+      }, 120);
+    }
+
+    // trail
+    this.trail.push({ x: this.x, y: this.y, r: this.r });
+    if (this.trail.length > 6) this.trail.shift();
+  };
+  Ball.prototype.draw = function () {
+    // trail in theme color
+    for (let i = 0; i < this.trail.length; i++) {
+      const t = this.trail[i], a = (i + 1) / this.trail.length * 0.22;
+      ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+      ctx.fillStyle = ballTheme.trail.replace(/0\.23\)/, (a.toFixed(2) + ')'));
+      ctx.fill();
+    }
+    // shadow
+    ctx.save(); ctx.globalAlpha = .26;
+    ctx.beginPath(); ctx.arc(this.x + 2 * DPR, this.y + 2 * DPR, this.r, 0, Math.PI * 2);
+    ctx.fillStyle = '#000'; ctx.fill(); ctx.restore();
+    // glossy ball (from theme fill)
+    const g = ctx.createRadialGradient(this.x - 0.45 * this.r, this.y - 0.45 * this.r, this.r * 0.12, this.x, this.y, this.r);
+    g.addColorStop(0, '#ffffff');
+    g.addColorStop(0.18, blend(ballTheme.fill, '#ffffff', 0.6));
+    g.addColorStop(1, blend(ballTheme.fill, '#2a447a', 0.25));
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+  };
+
+  // ===== UI layout =====
+  function layoutUI() {
+    if (!isMobile) {
+      const x = 12 * DPR, W = sideW - 24 * DPR; let y = 12 * DPR;
+      R.mode = new Rect(x, y, W, 38 * DPR); y += 38 * DPR + 12 * DPR;
+      R.bet = new Rect(x, y, W, 68 * DPR); y += 68 * DPR + 12 * DPR;
+      R.color = new Rect(x, y, W, 74 * DPR); y += 74 * DPR + 12 * DPR;
+      R.risk = new Rect(x, y, W, 64 * DPR); y += 64 * DPR + 12 * DPR;
+      R.rows = new Rect(x, y, W, 64 * DPR); y += 64 * DPR + 14 * DPR;
+      R.drop = new Rect(x, y, W, 52 * DPR);
+
+      // Right stats panel
+      const rx = canvas.width - (sideW - 24 * DPR) - 12 * DPR;
+      let ry = 12 * DPR, RW = sideW - 24 * DPR;
+      R.balance = new Rect(rx, ry, RW, 48 * DPR); ry += 58 * DPR;
+      R.streak = new Rect(rx, ry, RW, 48 * DPR);
+
+      R.rail = null; R.openBtn = null; R.overlay = null;
+    } else {
+      R.rail = new Rect(0, 0, railW, canvas.height);
+      R.openBtn = new Rect(6 * DPR, 10 * DPR, railW - 12 * DPR, 42 * DPR);
+
+      // Overlay panel
+      const px = railW + 8 * DPR, pW = Math.min(320 * DPR, canvas.width - railW - 16 * DPR);
+      let py = 8 * DPR;
+      R.overlay = new Rect(px, py, pW, canvas.height - 16 * DPR);
+
+      let y = py + 10 * DPR;
+      R.mode = new Rect(px + 10 * DPR, y, pW - 20 * DPR, 38 * DPR); y += 50 * DPR;
+      R.bet = new Rect(px + 10 * DPR, y, pW - 20 * DPR, 68 * DPR); y += 80 * DPR;
+      R.color = new Rect(px + 10 * DPR, y, pW - 20 * DPR, 74 * DPR); y += 86 * DPR;
+      R.risk = new Rect(px + 10 * DPR, y, pW - 20 * DPR, 64 * DPR); y += 76 * DPR;
+      R.rows = new Rect(px + 10 * DPR, y, pW - 20 * DPR, 64 * DPR); y += 88 * DPR;
+      R.drop = new Rect(px + 10 * DPR, y, pW - 20 * DPR, 52 * DPR);
+
+      // Stats hidden on mobile
+      R.balance = null; R.streak = null;
     }
   }
 
-  class Ball{
-    constructor(x,y,color){
-      this.x=x; this.y=y; this.r=Math.max(4,pegRadius);
-      this.vx=(rng()-0.5)*0.8; this.vy=INITIAL_VY;
-      this.done=false; this.trail=[]; this.color=color||settings.ballColor;
-    }
-    step(){
-      if(this.done) return;
-      this.vy += GRAVITY; this.vx *= (1-AIR_DRAG); this.vy *= (1-AIR_DRAG*0.5);
-      this.x += this.vx; this.y += this.vy;
-      collideEdge(this, topLeft,  nLeft);
-      collideEdge(this, topRight, nRight);
-      for(const p of pegs) collidePeg(this,p);
-      const floorY = baseLeft.y + 2; if(this.y>floorY) this.land();
-    }
-    land(){
-      this.done=true;
-      let idx=0,md=1e9; for(let i=0;i<slots.length;i++){ const d=Math.abs(this.x - slots[i].x); if(d<md){ md=d; idx=i; } }
-      const mult=slots[idx].mult; const bet=Math.max(0.1, parseFloat(betEl.value||'1'));
-      const payout=bet*mult*streak; balance+=payout; streak=(mult>=5)?(streak+1):1;
-      renderHUD();
-      pushLeaderboard({payout, mult, rows:settings.rows, risk:settings.risk});
-      saveNow();
-      setTimeout(()=>{ const j=balls.indexOf(this); if(j>=0) balls.splice(j,1); }, 120);
-    }
-    draw(){ drawBall(this); }
+  // ===== UI primitives =====
+  function drawPanel(x, y, w, h, r = 12 * DPR) {
+    ctx.save();
+    shadow(0, 6 * DPR, 18 * DPR, 'rgba(0,0,0,.35)');
+    roundRect(x, y, w, h, r);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#243349'); g.addColorStop(1, '#1b273b');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.shadowColor = 'transparent';
+    // inner gloss
+    ctx.save(); ctx.clip();
+    const hl = ctx.createLinearGradient(0, y, 0, y + h);
+    hl.addColorStop(0, 'rgba(255,255,255,.08)');
+    hl.addColorStop(.35, 'rgba(255,255,255,.02)');
+    hl.addColorStop(.65, 'rgba(0,0,0,.07)');
+    hl.addColorStop(1, 'rgba(0,0,0,.12)');
+    ctx.fillStyle = hl; ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    ctx.strokeStyle = '#2a3a54'; ctx.lineWidth = 1 * DPR; ctx.stroke();
+    ctx.restore();
+  }
+  function drawBtn(x, y, w, h, label, kind = 'default') {
+    roundRect(x, y, w, h, 12 * DPR);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    if (kind === 'green') { g.addColorStop(0, '#2af07a'); g.addColorStop(1, '#17b856'); }
+    else { g.addColorStop(0, '#1b2840'); g.addColorStop(1, '#142036'); }
+    ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = (kind === 'green') ? 'rgba(0,0,0,.25)' : '#2a3a54';
+    ctx.lineWidth = 1.2 * DPR; ctx.stroke();
+    // specular
+    ctx.save(); ctx.globalAlpha = .28; roundRect(x + 2 * DPR, y + 2 * DPR, w - 4 * DPR, h * 0.42, 10 * DPR); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+    font('800', 14 * DPR); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = (kind === 'green') ? '#062312' : '#e9eef9';
+    ctx.fillText(label, x + w / 2, y + h / 2 + 0.5 * DPR);
+  }
+  function drawSegment(x, y, w, h, activeLeft) {
+    roundRect(x, y, w, h, h / 2); ctx.fillStyle = '#0f1a2b'; ctx.fill(); ctx.strokeStyle = '#2a3a54'; ctx.stroke();
+    const segW = w / 2; const r = h / 2 - 3 * DPR, kx = activeLeft ? (x + 3 * DPR) : (x + segW + 3 * DPR);
+    roundRect(kx, y + 3 * DPR, segW - 6 * DPR, h - 6 * DPR, r);
+    const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#1f2d46'); g.addColorStop(1, '#11213a'); ctx.fillStyle = g; ctx.fill();
+    ctx.save(); ctx.globalAlpha = .25; roundRect(kx, y + 3 * DPR, segW - 6 * DPR, (h - 6 * DPR) * 0.45, r); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+    font('700', 13 * DPR); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = activeLeft ? '#e9eef9' : '#7f95ba'; ctx.fillText('Manual', x + segW / 2, y + h / 2 + 0.5 * DPR);
+    ctx.fillStyle = activeLeft ? '#7f95ba' : '#e9eef9'; ctx.fillText('Auto', x + segW + segW / 2, y + h / 2 + 0.5 * DPR);
+  }
+  function drawBetField(r) {
+    drawPanel(r.x, r.y, r.w, r.h);
+    label(r, 'Bet Amount');
+    const rowY = r.y + 30 * DPR, btnW = 52 * DPR, mainW = r.w - 24 * DPR - btnW * 2 - 12 * DPR, boxX = r.x + 12 * DPR;
+    drawPanel(boxX, rowY, mainW, 28 * DPR, 8 * DPR);
+    font('700', 13 * DPR); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#e9eef9';
+    ctx.fillText('$ ' + bet.toFixed(2), boxX + 10 * DPR, rowY + 14 * DPR + 0.5 * DPR);
+    drawPanel(boxX + mainW + 12 * DPR, rowY, btnW, 28 * DPR, 8 * DPR); ctx.textAlign = 'center'; ctx.fillStyle = '#e9eef9';
+    ctx.fillText('½', boxX + mainW + 12 * DPR + btnW / 2, rowY + 14 * DPR + 0.5 * DPR);
+    drawPanel(boxX + mainW + 12 * DPR + btnW, rowY, btnW, 28 * DPR, 8 * DPR);
+    ctx.fillText('2×', boxX + mainW + 12 * DPR + btnW + btnW / 2, rowY + 14 * DPR + 0.5 * DPR);
+  }
+  function drawColorField(r) {
+    drawPanel(r.x, r.y, r.w, r.h);
+    label(r, 'Ball Color');
+    const pad = 12 * DPR, sw = 28 * DPR, gap = 8 * DPR;
+    const Y = r.y + 30 * DPR; let X = r.x + pad;
+    R.colorSwatches = [];
+    BALL_THEMES.forEach((th) => {
+      ctx.save();
+      shadow(0, 3 * DPR, 8 * DPR, 'rgba(0,0,0,.35)');
+      roundRect(X, Y, sw, sw, 6 * DPR);
+      const g = ctx.createLinearGradient(X, Y, X, Y + sw);
+      g.addColorStop(0, blend(th.fill, '#ffffff', 0.35)); g.addColorStop(1, th.fill);
+      ctx.fillStyle = g; ctx.fill();
+      ctx.shadowColor = 'transparent';
+      if (th === ballTheme) { ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2 * DPR; } else { ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1 * DPR; }
+      ctx.stroke();
+      ctx.restore();
+      R.colorSwatches.push(new Rect(X, Y, sw, sw));
+      X += sw + gap;
+    });
+  }
+  function drawRiskField(r) { drawPanel(r.x, r.y, r.w, r.h); label(r, 'Risk'); value(r, cap(risk)); }
+  function drawRowsField(r) { drawPanel(r.x, r.y, r.w, r.h); label(r, 'Rows'); value(r, String(rows)); }
+
+  function label(r, text) {
+    font('600', 12 * DPR); ctx.fillStyle = '#9fb3d8'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText(text, r.x + 12 * DPR, r.y + 8 * DPR);
+  }
+  function value(r, text) {
+    const vx = r.x + 12 * DPR, vy = r.y + 24 * DPR, vw = r.w - 24 * DPR, vh = r.h - 36 * DPR;
+    drawPanel(vx, vy, vw, vh, 8 * DPR);
+    font('700', 13 * DPR); ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#e9eef9';
+    ctx.fillText(text, vx + 10 * DPR, vy + vh / 2 + 0.5 * DPR);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#7f95ba'; ctx.fillText('▾', vx + vw - 8 * DPR, vy + vh / 2 + 0.5 * DPR);
   }
 
-  // ===== UI actions =====
-  manualBtn.addEventListener('click',()=>{ auto=false; manualBtn.classList.add('active'); autoBtn.classList.remove('active'); });
-  autoBtn  .addEventListener('click',()=>{ auto=!auto; autoBtn.classList.toggle('active',auto); manualBtn.classList.toggle('active',!auto); });
-  dropBtn  .addEventListener('click', drop);
-  canvas   .addEventListener('pointerdown',(e)=>{ if(e.clientY < window.innerHeight*0.35) drop(); });
-  betHalf  .addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)/2).toFixed(2); settings.bet=parseFloat(betEl.value); updateDropBtn(); saveNow(); });
-  betDouble.addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)*2).toFixed(2); settings.bet=parseFloat(betEl.value); updateDropBtn(); saveNow(); });
-  betEl    .addEventListener('input', ()=>{ settings.bet=parseFloat(betEl.value)||1; updateDropBtn(); saveNow(); });
-  riskEl   .addEventListener('change',()=>{ settings.risk=riskEl.value; updateMultipliers(); draw(); saveNow(); });
-  patternEl.addEventListener('change',()=>{ settings.pattern=patternEl.value; buildBoard(); computeBoardScale(); draw(); saveNow(); });
-  rowsEl   .addEventListener('input',()=>{ settings.rows=parseInt(rowsEl.value,10); buildBoard(); computeBoardScale(); draw(); saveNow(); });
-  resetBtn .addEventListener('click',()=>{ localStorage.removeItem(SAVE_KEY); location.reload(); });
+  // ===== Right panel & Board =====
+  function drawSidebarDesktop() {
+    // left controls
+    drawPanel(12 * DPR, 12 * DPR, sideW - 24 * DPR, canvas.height - 24 * DPR, 16 * DPR);
+    drawSegment(R.mode.x, R.mode.y, R.mode.w, R.mode.h, mode === 'manual');
+    drawBetField(R.bet);
+    drawColorField(R.color);
+    drawRiskField(R.risk);
+    drawRowsField(R.rows);
+    drawBtn(R.drop.x, R.drop.y, R.drop.w, R.drop.h, 'Drop Ball', 'green');
 
-  // ball color chips
-  chipsWrap.addEventListener('click',(e)=>{
-    const btn = e.target.closest('.chip'); if(!btn) return;
-    settings.ballColor = btn.getAttribute('data-color');
-    [...chipsWrap.querySelectorAll('.chip')].forEach(c=>c.classList.toggle('active', c===btn));
-    saveNow();
+    // right stats
+    drawPanel(R.balance.x, R.balance.y, R.balance.w, R.balance.h, 12 * DPR);
+    font('700', 14 * DPR); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#e9eef9';
+    ctx.fillText('Balance  $' + balance.toFixed(2), R.balance.x + R.balance.w / 2, R.balance.y + R.balance.h / 2 + 0.5 * DPR);
+
+    drawPanel(R.streak.x, R.streak.y, R.streak.w, R.streak.h, 12 * DPR);
+    ctx.fillText('Streak   x' + combo, R.streak.x + R.streak.w / 2, R.streak.y + R.streak.h / 2 + 0.5 * DPR);
+  }
+  function drawRailMobile() {
+    drawPanel(R.rail.x + 4 * DPR, R.rail.y + 4 * DPR, railW - 8 * DPR, canvas.height - 8 * DPR, 16 * DPR);
+    drawBtn(R.openBtn.x, R.openBtn.y, R.openBtn.w, R.openBtn.h, 'Menu');
+  }
+  function drawOverlayMobile() {
+    // dim
+    ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // overlay
+    drawPanel(R.overlay.x, R.overlay.y, R.overlay.w, R.overlay.h, 16 * DPR);
+    drawSegment(R.mode.x, R.mode.y, R.mode.w, R.mode.h, mode === 'manual');
+    drawBetField(R.bet);
+    drawColorField(R.color);
+    drawRiskField(R.risk);
+    drawRowsField(R.rows);
+    drawBtn(R.drop.x, R.drop.y, R.drop.w, R.drop.h, 'Drop Ball', 'green');
+  }
+
+  function drawTriangle() {
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineWidth = 3 * DPR; ctx.strokeStyle = 'rgba(160,200,255,.55)';
+    ctx.beginPath(); ctx.moveTo(GEOM.apex.x, GEOM.apex.y); ctx.lineTo(GEOM.left.x, GEOM.left.y); ctx.lineTo(GEOM.right.x, GEOM.right.y); ctx.closePath(); ctx.stroke(); ctx.restore();
+  }
+  function drawPegs() {
+    for (const p of pegs) {
+      // shadow
+      ctx.save(); ctx.globalAlpha = .26; ctx.beginPath(); ctx.arc(p.x + 1.6 * DPR, p.y + 1.6 * DPR, p.r, 0, Math.PI * 2); ctx.fillStyle = '#000'; ctx.fill(); ctx.restore();
+      // glossy peg
+      const g = ctx.createRadialGradient(p.x - p.r * 0.35, p.y - p.r * 0.35, p.r * 0.15, p.x, p.y, p.r);
+      g.addColorStop(0, '#ffffff'); g.addColorStop(0.48, '#e7f0ff'); g.addColorStop(1, '#6fa0ff');
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill();
+    }
+  }
+  function drawSlotChips() {
+    const baseY = (slots[0]?.y || (boardRect.y + boardRect.h - 40 * DPR)) + 44 * DPR;
+    const chipH = 26 * DPR, r = 8 * DPR;
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i], x = s.x - (s.w - 8 * DPR) / 2, w = s.w - 8 * DPR;
+      shadow(0, 3 * DPR, 10 * DPR, 'rgba(0,0,0,.4)');
+      roundRect(x, baseY, w, chipH, r);
+      const col = chipColor(i, slots.length);
+      const g = ctx.createLinearGradient(0, baseY, 0, baseY + chipH);
+      g.addColorStop(0, shade(col, 16)); g.addColorStop(1, col);
+      ctx.fillStyle = g; ctx.fill(); ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = 'rgba(0,0,0,.28)'; ctx.stroke();
+      // gloss
+      ctx.save(); ctx.globalAlpha = .22; roundRect(x + 2 * DPR, baseY + 2 * DPR, w - 4 * DPR, chipH * 0.42, r - 2 * DPR); ctx.fillStyle = '#fff'; ctx.fill(); ctx.restore();
+      // label
+      const label = (s.mult >= 5 ? s.mult.toFixed(1) : s.mult.toFixed(1)) + 'x';
+      font('800', 12 * DPR); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = chipText(col); ctx.fillText(label, x + w / 2, baseY + chipH / 2 + 0.5 * DPR);
+    }
+  }
+  function chipColor(idx, total) {
+    const t = Math.abs(idx - (total - 1) / 2) / ((total - 1) / 2);
+    if (t > 0.85) return '#ef2b43';
+    if (t > 0.70) return '#ff6b2e';
+    if (t > 0.50) return '#ff9c2e';
+    if (t > 0.30) return '#ffc43c';
+    return '#ffd95a';
+  }
+  function chipText(bg) { return (bg === '#ef2b43' || bg === '#ff6b2e') ? '#ffffff' : '#1a1400'; }
+
+  function drawBoard() {
+    // vignette
+    const grad = ctx.createRadialGradient(boardRect.x + boardRect.w * 0.5, boardRect.y + boardRect.h * 0.2, 60 * DPR, boardRect.x + boardRect.w * 0.5, boardRect.y + boardRect.h * 0.8, boardRect.h);
+    grad.addColorStop(0, 'rgba(130,170,255,.08)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad; ctx.fillRect(boardRect.x, boardRect.y, boardRect.w, boardRect.h);
+
+    // grid
+    ctx.save(); ctx.beginPath(); ctx.rect(boardRect.x, boardRect.y, boardRect.w, boardRect.h); ctx.clip();
+    ctx.globalAlpha = 0.05; const step = 40 * DPR; ctx.beginPath();
+    for (let x = boardRect.x; x < boardRect.x + boardRect.w; x += step) { ctx.moveTo(x, boardRect.y); ctx.lineTo(x, boardRect.y + boardRect.h); }
+    for (let y = boardRect.y; y < boardRect.y + boardRect.h; y += step) { ctx.moveTo(boardRect.x, y); ctx.lineTo(boardRect.x + boardRect.w, y); }
+    ctx.strokeStyle = '#8cb6ff'; ctx.stroke(); ctx.globalAlpha = 1;
+
+    drawTriangle();
+    drawPegs();
+    balls.forEach(b => b.draw());
+    ctx.restore();
+
+    drawSlotChips();
+
+    // hint
+    font('600', 11 * DPR); ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(233,238,249,.7)';
+    ctx.fillText('Tap near the top to drop', boardRect.x + boardRect.w / 2, boardRect.y + 14 * DPR);
+  }
+
+  // ===== Draw / Update / Loop =====
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (isMobile) {
+      drawRailMobile();
+      drawBoard();
+      if (overlayOpen) drawOverlayMobile();
+    } else {
+      drawSidebarDesktop();
+      drawBoard();
+    }
+  }
+  function update() {
+    const now = performance.now();
+    if (auto && now - lastDrop > dropInterval) { drop(); lastDrop = now; }
+    balls.forEach(b => b.step(1));
+  }
+  function loop() { update(); draw(); requestAnimationFrame(loop); }
+
+  // ===== Input =====
+  canvas.addEventListener('pointerdown', (e) => {
+    const p = getPt(e);
+
+    if (isMobile) {
+      if (overlayOpen) {
+        if (hit(p, R.mode)) { mode = (p.x < R.mode.x + R.mode.w / 2) ? 'manual' : 'auto'; auto = (mode === 'auto'); return; }
+        if (hit(p, R.bet)) { handleBetTap(p, R.bet); return; }
+        if (hit(p, R.color)) { handleColorTap(p); return; }
+        if (hit(p, R.risk)) { cycleRisk(); return; }
+        if (hit(p, R.rows)) { cycleRows(); return; }
+        if (hit(p, R.drop)) { drop(); return; }
+        if (!hit(p, R.overlay)) { overlayOpen = false; draw(); return; }
+      } else {
+        if (hit(p, R.openBtn)) { overlayOpen = true; draw(); return; }
+      }
+    } else {
+      if (hit(p, R.mode)) { mode = (p.x < R.mode.x + R.mode.w / 2) ? 'manual' : 'auto'; auto = (mode === 'auto'); return; }
+      if (hit(p, R.bet)) { handleBetTap(p, R.bet); return; }
+      if (hit(p, R.color)) { handleColorTap(p); return; }
+      if (hit(p, R.risk)) { cycleRisk(); return; }
+      if (hit(p, R.rows)) { cycleRows(); return; }
+      if (hit(p, R.drop)) { drop(); return; }
+    }
+
+    // Board top tap -> drop
+    if (p.x > boardRect.x && p.x < boardRect.x + boardRect.w && p.y > boardRect.y && p.y < boardRect.y + boardRect.h) {
+      if (p.y < boardRect.y + boardRect.h * 0.25) drop();
+    }
   });
 
-  // ===== Draw helpers =====
-  function drawBackground(){
-    ctx.setTransform(DPR*boardScale,0,0,DPR*boardScale, tx*DPR, ty*DPR);
-    ctx.clearRect(-tx, -ty, W, H);
-    const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#09162e'); g.addColorStop(1,'#070f22'); ctx.fillStyle=g; ctx.fillRect(-tx, -ty, W, H);
-    ctx.strokeStyle='rgba(156,209,255,.38)'; ctx.lineWidth=1.6/boardScale; ctx.beginPath();
-    ctx.moveTo(topLeft.x, topLeft.y); ctx.lineTo(baseLeft.x, baseLeft.y); ctx.lineTo(baseRight.x, baseRight.y); ctx.lineTo(topRight.x, topRight.y);
-    ctx.closePath(); ctx.stroke();
+  function handleBetTap(p, rect) {
+    const rel = (p.x - rect.x) / rect.w;
+    if (rel < 0.33) bet = Math.max(0.1, Math.round((bet / 2) * 10) / 10);
+    else if (rel > 0.66) bet = Math.max(0.1, Math.round((bet * 2) * 10) / 10);
+    else bet = Math.max(0.1, Math.round((bet + 0.1) * 10) / 10);
   }
-  function drawPeg(p){
-    ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.shadowColor='rgba(130,170,255,.45)'; ctx.shadowBlur=8; ctx.beginPath(); ctx.arc(p.x,p.y,p.r*0.9,0,TAU); ctx.fillStyle='rgba(130,170,255,.18)'; ctx.fill(); ctx.restore();
-    const grad = ctx.createRadialGradient(p.x-2,p.y-2,1, p.x,p.y, p.r+5); grad.addColorStop(0,'#f4fbff'); grad.addColorStop(.35,'#cfe2ff'); grad.addColorStop(1,'#2b4c80');
-    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,TAU); ctx.fillStyle=grad; ctx.fill();
-  }
-  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
-  function chipColor(i,n){ const t=Math.abs(i-(n-1)/2)/((n-1)/2); if(t>0.85) return '#ef2b43'; if(t>0.70) return '#ff6b2e'; if(t>0.50) return '#ff9c2e'; if(t>0.30) return '#ffc43c'; return '#ffd95a'; }
-  function shade(hex, amt){ const c=parseInt(hex.slice(1),16); let r=(c>>16)&255,g=(c>>8)&255,b=c&255; r=Math.min(255,Math.max(0,r+amt)); g=Math.min(255,Math.max(0,g+amt)); b=Math.min(255,Math.max(0,b+amt)); return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
-  function formatMult(m){ const v=+m; return (v>=10?Math.round(v):v.toFixed(1))+'x'; }
-  function drawSlots(){
-    const y = (slots[0]?.y || (topOffset + (settings.rows-1)*pegSpacingY + 36)) + 6; const h=28;
-    for(let i=0;i<slots.length;i++){
-      const s=slots[i]; const x=s.x - (s.w-8)/2, w=s.w-8; const col=chipColor(i,slots.length);
-      ctx.save(); ctx.shadowColor='rgba(0,0,0,.4)'; ctx.shadowBlur=10; roundRect(x,y,w,h,9);
-      const gg=ctx.createLinearGradient(0,y,0,y+h); gg.addColorStop(0, shade(col, 14)); gg.addColorStop(1, col); ctx.fillStyle=gg; ctx.fill(); ctx.restore();
-      ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke(); ctx.save(); ctx.globalAlpha=.25; roundRect(x+2,y+2,w-4,h*.42,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.restore();
-      const label=formatMult(s.mult); ctx.font=`800 ${12/boardScale}px ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial`; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillStyle=(i<2||i>slots.length-3)?'#fff':'#1a1400'; ctx.fillText(label, x+w/2, y+h/2+0.5);
+  function handleColorTap(p) {
+    if (!R.colorSwatches) return;
+    for (let i = 0; i < R.colorSwatches.length; i++) {
+      if (R.colorSwatches[i].contains(p.x, p.y)) { ballTheme = BALL_THEMES[i]; break; }
     }
   }
-  function drawBall(b){
-    if(!b.trail) b.trail=[]; b.trail.push({x:b.x,y:b.y}); if(b.trail.length>10) b.trail.shift();
-    ctx.save(); ctx.globalCompositeOperation='lighter';
-    for(let i=0;i<b.trail.length;i++){ const t=b.trail[i], a=i/b.trail.length; ctx.globalAlpha=0.08+a*0.14; ctx.beginPath(); ctx.arc(t.x,t.y,b.r*(0.7+a*0.5),0,TAU); ctx.fillStyle='rgba(156,209,255,.55)'; ctx.fill(); }
-    ctx.restore(); ctx.globalAlpha=1;
-    const c = b.color||settings.ballColor;
-    const grad=ctx.createRadialGradient(b.x-2,b.y-3,1.5,b.x,b.y,b.r+7);
-    grad.addColorStop(0,'#ffffff'); grad.addColorStop(.25, c); grad.addColorStop(1, shade(c,-90));
-    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fillStyle=grad; ctx.fill();
+  function cycleRisk() {
+    risk = (risk === 'low') ? 'medium' : (risk === 'medium') ? 'high' : 'low';
+    updateMultipliers();
+  }
+  function cycleRows() {
+    rows += 2; if (rows > 16) rows = 8;
+    buildBoard();
   }
 
-  function draw(){ drawBackground(); for(const p of pegs) drawPeg(p); drawSlots(); balls.forEach(b=> b.draw()); }
-  function update(){ const now=performance.now(); if(auto && now-lastDrop>dropInterval){ drop(); lastDrop=now; } balls.forEach(b=> b.step()); }
-  function loop(){ update(); draw(); requestAnimationFrame(loop); }
-
-  // ===== Game/HUD =====
-  function drop(){
-    const bet=Math.max(0.1, parseFloat(betEl.value||'1')); if(balance<bet) return;
-    balance-=bet; renderHUD(); saveNow();
-    const spread=pegSpacingX*0.30; const centerX=(topLeft.x+topRight.x)/2;
-    const spawnX = centerX + (rng()-0.5)*spread; const spawnY = topLeft.y - SPAWN_HEIGHT;
-    balls.push(new Ball(spawnX,spawnY, settings.ballColor));
+  function drop() {
+    if (balance < bet) return;
+    balance -= bet;
+    const spawnX = GEOM.apex.x + (rng() - 0.5) * GEOM.pegSpacingX * 0.2;
+    const spawnY = GEOM.apex.y + (APEX_GUARD_Y_OFFSET + 2) * DPR; // spawn just below apex guard
+    balls.push(new Ball(spawnX, spawnY));
   }
 
-  function renderHUD(){
-    balanceEl.textContent='$'+balance.toFixed(2);
-    streakEl.textContent='x'+streak;
-    updateDropBtn();
-    renderLeaderboard();
+  // ===== Utilities =====
+  function getPt(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * (canvas.width / r.width), y: (e.clientY - r.top) * (canvas.height / r.height) }; }
+  function hit(p, rect) { return rect && rect.contains(p.x, p.y); }
+  function shadow(x, y, b, clr) { ctx.shadowColor = clr; ctx.shadowBlur = b; ctx.shadowOffsetX = x; ctx.shadowOffsetY = y; }
+  function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function font(weight, px) { ctx.font = weight + ' ' + Math.round(px) + 'px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif'; }
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function shade(hex, amt) { const c = parseInt(hex.slice(1), 16); let r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255; r = clamp(r + amt); g = clamp(g + amt); b = clamp(b + amt); return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1); }
+  function clamp(v) { return Math.min(255, Math.max(0, v)); }
+  function blend(hex, hex2, t) { const a = parseInt(hex.slice(1), 16), b = parseInt(hex2.slice(1), 16);
+    const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+    const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+    const r = Math.round(ar * (1 - t) + br * t), g = Math.round(ag * (1 - t) + bg * t), bl = Math.round(ab * (1 - t) + bb * t);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
   }
-  function updateDropBtn(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); dropBtn.disabled = balance < bet; }
+  function mulberry32(a) { return function () { var t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; } }
 
-  // ===== Leaderboard (local) =====
-  function pushLeaderboard({payout, mult, rows, risk}){
-    const entry = {payout: +payout.toFixed(2), mult:+mult, rows, risk, date: Date.now()};
-    settings.leaderboard.push(entry);
-    settings.leaderboard.sort((a,b)=> b.payout - a.payout);
-    settings.leaderboard = settings.leaderboard.slice(0,10);
-  }
-  function renderLeaderboard(){
-    if(!lbList) return;
-    lbList.innerHTML = '';
-    (settings.leaderboard||[]).forEach((e,i)=>{
-      const li = document.createElement('li');
-      const d  = new Date(e.date).toLocaleDateString();
-      li.textContent = `#${i+1}  $${e.payout.toFixed(2)} — ${e.mult}x  · ${e.rows} rows · ${e.risk} · ${d}`;
-      lbList.appendChild(li);
-    });
-  }
-
-  // ===== Save/Load =====
-  function saveNow(){
-    settings.balance = balance; settings.streak = streak;
-    localStorage.setItem(SAVE_KEY, JSON.stringify({
-      ...settings,
-      bet: parseFloat(betEl.value)||1,
-      risk: riskEl.value,
-      pattern: patternEl.value,
-      rows: parseInt(rowsEl.value,10)
-    }));
-  }
-  function loadSaveIntoUI(){
-    try{
-      const raw = localStorage.getItem(SAVE_KEY);
-      if(!raw) return;
-      const s = JSON.parse(raw);
-      Object.assign(settings, s);
-      // hydrate UI
-      betEl.value = (s.bet ?? 1).toFixed(2);
-      riskEl.value = s.risk || 'medium';
-      patternEl.value = s.pattern || 'flat3';
-      rowsEl.value = s.rows || rowsEl.value;
-      // ball color chip active state
-      const chip = document.querySelector(`.chip[data-color="${s.ballColor}"]`);
-      if(chip){ chip.classList.add('active'); }
-    }catch(e){}
-  }
-
-  // ===== Utils =====
-  function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;}}
-
-  // Init
-  function init(){ size(); renderHUD(); loop(); }
-  init();
+  // ===== Start =====
+  sizeCanvas();
+  loop();
 })();
