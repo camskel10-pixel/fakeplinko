@@ -1,25 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Plinko — Responsive Vertical Fit (PC + Mobile)</title>
-<link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>Plinko — Canvas</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
+  <!-- 100% of the UI (buttons, selectors, labels) is drawn inside the canvas -->
+  <canvas id="board"></canvas>
 
-  <!-- Left controls (selectors on the side) -->
-  <aside id="left" class="side" aria-label="Controls">
-    <!-- left panel content -->
-  </aside>
-
-  <!-- Right info (stats + power-ups legend) -->
-  <aside id="right" class="side" aria-label="Stats and Power-ups">
-    <!-- right panel content -->
-  </aside>
-
-  <canvas id="stage" aria-label="Plinko board (tap near the top to drop)"></canvas>
-
-<script src="game.js" defer></script>
+  <script defer src="game.js"></script>
 </body>
 </html>
