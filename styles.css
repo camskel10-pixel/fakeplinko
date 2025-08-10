@@ -1,13 +1,12 @@
-/* Minimal CSS: canvas fills the screen; no external fonts (offline). */
+/* Offline; no external fonts. Canvas fills viewport. */
 html, body {
   height: 100%;
   margin: 0;
-  background: #0c1322; /* matches canvas theme */
+  background: #0c1322;
 }
-
 #board {
   display: block;
   width: 100%;
   height: 100%;
-  touch-action: manipulation; /* nicer on mobile */
+  touch-action: manipulation;
 }
