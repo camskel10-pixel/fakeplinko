@@ -1,93 +1,217 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <title>Plinko — Responsive Vertical Fit (PC + Mobile)</title>
-  <link rel="stylesheet" href="./styles/styles.css">
-</head>
-<body>
-  <!-- Left controls (selectors on the side) -->
-  <aside id="left" class="side" aria-label="Controls">
-    <button id="leftToggle" class="collapse-btn" aria-expanded="true" title="Collapse">⟨</button>
-    <div class="card">
-      <div class="title">Mode</div>
-      <div class="seg" role="tablist">
-        <button id="manualBtn" class="active" role="tab" aria-selected="true">Manual</button>
-        <button id="autoBtn" role="tab" aria-selected="false">Auto</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="title">Bet</div>
-      <div class="row">
-        <button id="betHalf" class="btn dark sm">½</button>
-        <input id="bet" type="number" min="0.1" step="0.1" value="1.0" inputmode="decimal"/>
-        <button id="betDouble" class="btn dark sm">2×</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="title">Risk</div>
-      <select id="risk" class="select3d">
-        <option value="verylow">Very Low</option>
-        <option value="low">Low</option>
-        <option value="medium" selected>Medium</option>
-        <option value="high">High</option>
-        <option value="extreme">Extreme</option>
-      </select>
-    </div>
-    <div class="card">
-      <div class="title">Pattern</div>
-      <select id="pattern" class="select3d">
-        <option value="flat3" selected>Flat Top (3)</option>
-        <option value="point">Pointed Apex</option>
-        <option value="leanL">Left Bias</option>
-        <option value="leanR">Right Bias</option>
-        <option value="sparse">Sparse Chaos</option>
-      </select>
-    </div>
-    <div class="card">
-      <div class="title">Rows <span id="rowsLabel" class="subtle"></span></div>
-      <div class="row"><input id="rows" type="range" min="8" max="16" value="12"/></div>
-    </div>
-    <div class="card">
-      <div class="title">Ball</div>
-      <div id="ballColors" class="row">
-        <button class="chip" data-color="#8cb6ff" aria-label="Blue"></button>
-        <button class="chip" data-color="#ff8aa5" aria-label="Pink"></button>
-        <button class="chip" data-color="#7ef7a4" aria-label="Green"></button>
-        <button class="chip" data-color="#ffd95a" aria-label="Yellow"></button>
-        <button class="chip" data-color="#c68cff" aria-label="Purple"></button>
-      </div>
-    </div>
-    <button id="dropBtn" class="btn green">Drop Ball</button>
-  </aside>
-
-  <!-- Right info (stats + leaderboard + power-ups legend) -->
-  <aside id="right" class="side" aria-label="Stats and Leaderboard">
-    <button id="rightToggle" class="collapse-btn" aria-expanded="true" title="Collapse">⟨</button>
-    <div class="card stat">Balance<br><span id="balance" class="big">$1000.00</span></div>
-    <div class="card stat">Streak<br><span id="streak" class="big">x1</span></div>
-    <div class="card" id="leaderboard">
-      <div class="title">Leaderboard (local)</div>
-      <ol id="lbList" class="lb"></ol>
-      <button id="resetBtn" class="btn dark xs" title="Clear progress & leaderboard">Reset Progress</button>
-    </div>
-    <div class="card">
-      <div class="title">Power-ups</div>
-      <ul class="legend">
-        <li data-power="magnet"><span class="dot red"></span> Magnet Pull – Attracts to best slot.</li>
-        <li data-power="wind"><span class="dot blue"></span> Wind Gust – Pushes sideways mid-fall.</li>
-        <li data-power="slow"><span class="dot purple"></span> Slow Motion – Temporarily slows.</li>
-        <li data-power="bumper"><span class="dot gold"></span> Bumper Peg – Stronger rebounds.</li>
-        <li data-power="multiball"><span class="dot pale"></span> Multi-ball – Splits into 3 balls.</li>
-        <li data-power="explode"><span class="dot white"></span> Exploding Peg – Removes a peg.</li>
-      </ul>
-    </div>
-  </aside>
-
-  <!-- Canvas for the Plinko board -->
-  <canvas id="stage"></canvas>
-
-  <script src="./src/game.js" defer></script>
-</body>
-</html>
+(cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
+diff --git a/index.html b/index.html
+--- a/index.html
++++ b/index.html
+@@ -1,92 +1,118 @@
+-<!DOCTYPE html>
+-<html lang="en">
+-<head>
+-  <meta charset="UTF-8" />
+-  <meta name="viewport"
+-        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+-  <title>Plinko — Responsive Vertical Fit (PC + Mobile)</title>
+-  <link rel="stylesheet" href="styles.css">
+-</head>
+-<body>
+-  <!-- Left controls (selectors on the side) -->
+-  <aside id="left" class="side" aria-label="Controls">
+-    <div class="card">
+-      <div class="title">Mode</div>
+-      <div class="seg" role="tablist">
+-        <button id="manualBtn" class="active" role="tab" aria-selected="true">Manual</button>
+-        <button id="autoBtn" role="tab" aria-selected="false">Auto</button>
+-      </div>
+-    </div>
+-    <div class="card">
+-      <div class="title">Bet</div>
+-      <div class="row">
+-        <button id="betHalf" class="btn dark sm">½</button>
+-        <input id="bet" type="number" min="0.1" step="0.1" value="1.0" inputmode="decimal"/>
+-        <button id="betDouble" class="btn dark sm">2×</button>
+-      </div>
+-    </div>
+-    <div class="card">
+-      <div class="title">Risk</div>
+-      <select id="risk" class="select3d">
+-        <option value="verylow">Very Low</option>
+-        <option value="low">Low</option>
+-        <option value="medium" selected>Medium</option>
+-        <option value="high">High</option>
+-        <option value="extreme">Extreme</option>
+-      </select>
+-    </div>
+-    <div class="card">
+-      <div class="title">Pattern</div>
+-      <select id="pattern" class="select3d">
+-        <option value="flat3" selected>Flat Top (3)</option>
+-        <option value="point">Pointed Apex</option>
+-        <option value="leanL">Left Bias</option>
+-        <option value="leanR">Right Bias</option>
+-        <option value="sparse">Sparse Chaos</option>
+-      </select>
+-    </div>
+-    <div class="card">
+-      <div class="title">Rows <span id="rowsLabel" class="subtle"></span></div>
+-      <div class="row"><input id="rows" type="range" min="8" max="16" value="12"/></div>
+-    </div>
+-    <div class="card">
+-      <div class="title">Ball</div>
+-      <div id="ballColors" class="row">
+-        <button class="chip" data-color="#8cb6ff" aria-label="Blue"></button>
+-        <button class="chip" data-color="#ff8aa5" aria-label="Pink"></button>
+-        <button class="chip" data-color="#7ef7a4" aria-label="Green"></button>
+-        <button class="chip" data-color="#ffd95a" aria-label="Yellow"></button>
+-        <button class="chip" data-color="#c68cff" aria-label="Purple"></button>
+-      </div>
+-    </div>
+-    <button id="dropBtn" class="btn green">Drop Ball</button>
+-  </aside>
+-
+-  <!-- Right info (stats + leaderboard + power-ups legend) -->
+-  <aside id="right" class="side" aria-label="Stats and Leaderboard">
+-    <div class="card stat">Balance<br><span id="balance" class="big">$1000.00</span></div>
+-    <div class="card stat">Streak<br><span id="streak" class="big">x1</span></div>
+-    <div class="card" id="leaderboard">
+-      <div class="title">Leaderboard (local)</div>
+-      <ol id="lbList" class="lb"></ol>
+-      <button id="resetBtn" class="btn dark xs" title="Clear progress & leaderboard">Reset Progress</button>
+-    </div>
+-    <div class="card">
+-      <div class="title">Power-ups</div>
+-      <ul class="legend">
+-        <li><span class="dot red"></span> Magnet Pull – Attracts to best slot.</li>
+-        <li><span class="dot blue"></span> Wind Gust – Pushes sideways mid-fall.</li>
+-        <li><span class="dot purple"></span> Slow Motion – Temporarily slows.</li>
+-        <li><span class="dot gold"></span> Bumper Peg – Stronger rebounds.</li>
+-        <li><span class="dot pale"></span> Multi-ball – Splits into 3 balls.</li>
+-        <li><span class="dot white"></span> Exploding Peg – Removes a peg.</li>
+-      </ul>
+-    </div>
+-  </aside>
+-
+-  <!-- Canvas for the Plinko board -->
+-  <canvas id="stage"></canvas>
+-
+-  <script src="game.js" defer></script>
+-</body>
+-</html>
++<!DOCTYPE html>
++<html lang="en">
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1" />
++  <title>Plinko</title>
++  <link rel="stylesheet" href="./styles/styles.css" />
++</head>
++<body>
++  <div id="app" class="app">
++    <aside id="leftPanel" class="panel left" aria-label="Controls panel">
++      <button id="collapseLeft" class="chevron left" aria-label="Collapse left panel" title="Collapse">❮</button>
++      <div class="panel-content">
++        <section class="card">
++          <h2 class="card-title">Mode</h2>
++          <div id="modeTabs" class="segmented" role="tablist" aria-label="Mode selector">
++            <button id="modeManual" role="tab" aria-selected="true" class="seg-btn active" data-mode="manual">Manual</button>
++            <button id="modeAuto" role="tab" aria-selected="false" class="seg-btn" data-mode="auto">Auto</button>
++          </div>
++        </section>
++
++        <section class="card">
++          <h2 class="card-title">Bet</h2>
++          <div class="bet-row">
++            <button id="betHalf" class="btn sm" title="Half bet">½</button>
++            <input id="betInput" type="number" min="0.1" step="0.1" value="1.0" aria-label="Bet amount" />
++            <button id="betDouble" class="btn sm" title="Double bet">2×</button>
++          </div>
++        </section>
++
++        <section class="card grid">
++          <div class="field">
++            <label for="riskSelect">Risk</label>
++            <select id="riskSelect" aria-label="Risk">
++              <option value="verylow">Very Low</option>
++              <option value="low">Low</option>
++              <option value="medium" selected>Medium</option>
++              <option value="high">High</option>
++              <option value="extreme">Extreme</option>
++            </select>
++          </div>
++          <div class="field">
++            <label for="patternSelect">Pattern</label>
++            <select id="patternSelect" aria-label="Pattern">
++              <option value="flat3" selected>Flat 3</option>
++              <option value="point">Point</option>
++              <option value="leanL">Lean L</option>
++              <option value="leanR">Lean R</option>
++              <option value="sparse">Sparse</option>
++            </select>
++          </div>
++          <div class="field span-2">
++            <label for="rowsRange">Rows <span id="rowsLabel" class="mono">12</span></label>
++            <input id="rowsRange" type="range" min="8" max="16" step="1" value="12" />
++          </div>
++        </section>
++
++        <section class="card">
++          <h2 class="card-title">Ball Color</h2>
++          <div id="chipRow" class="chips">
++            <button class="chip" aria-label="#ff4d4d" data-color="#ff4d4d"></button>
++            <button class="chip" aria-label="#4dd2ff" data-color="#4dd2ff"></button>
++            <button class="chip" aria-label="#b84dff" data-color="#b84dff"></button>
++            <button class="chip" aria-label="#ffd24d" data-color="#ffd24d"></button>
++            <button class="chip" aria-label="#7dff8a" data-color="#7dff8a"></button>
++          </div>
++        </section>
++
++        <section class="card">
++          <button id="dropBtn" class="btn primary wide" disabled>Drop</button>
++        </section>
++      </div>
++    </aside>
++
++    <main class="canvas-wrap" aria-label="Game board">
++      <canvas id="board"></canvas>
++    </main>
++
++    <aside id="rightPanel" class="panel right" aria-label="Stats panel">
++      <button id="collapseRight" class="chevron right" aria-label="Collapse right panel" title="Collapse">❯</button>
++      <div class="panel-content">
++        <section class="card">
++          <div class="stat">
++            <div class="label">Balance</div>
++            <div id="balance" class="value mono">0.00</div>
++          </div>
++          <div class="stat">
++            <div class="label">Streak</div>
++            <div id="streak" class="value mono">0</div>
++          </div>
++        </section>
++
++        <section class="card">
++          <h2 class="card-title">Leaderboard</h2>
++          <ol id="leaderboard" class="lb"></ol>
++          <button id="resetProgress" class="btn danger">Reset Progress</button>
++        </section>
++
++        <section class="card">
++          <h2 class="card-title">Power-ups</h2>
++          <div class="powers">
++            <button class="power" data-power="magnet" title="Magnet Pull (red)"><span class="dot red"></span>Magnet Pull</button>
++            <button class="power" data-power="wind" title="Wind Gust (blue)"><span class="dot blue"></span>Wind Gust</button>
++            <button class="power" data-power="slow" title="Slow Motion (purple)"><span class="dot purple"></span>Slow Motion</button>
++            <button class="power" data-power="bumper" title="Bumper Peg (gold)"><span class="dot gold"></span>Bumper Peg</button>
++            <button class="power" data-power="multiball" title="Multi-ball (pale)"><span class="dot pale"></span>Multi-ball</button>
++            <button class="power" data-power="explode" title="Exploding Peg (white)"><span class="dot white"></span>Exploding Peg</button>
++          </div>
++          <div class="hint">Applied to the next drop only</div>
++        </section>
++      </div>
++    </aside>
++  </div>
++
++  <script src="./src/game.js" defer></script>
++</body>
++</html>
++
+EOF
+)
