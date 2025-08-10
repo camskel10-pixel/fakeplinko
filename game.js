@@ -42,6 +42,7 @@
   const streakEl = document.getElementById('streak');
   const leaderboardEl = document.getElementById('leaderboard');
   const resetProgressBtn = document.getElementById('resetProgress');
+  const resetBalanceBtn = document.getElementById('resetBalance');
 
   const powerButtons = Array.from(document.querySelectorAll('.power'));
 
@@ -183,6 +184,14 @@
       recomputeBoard();
     });
 
+    // Reset balance to $1,000
+    resetBalanceBtn?.addEventListener('click', () => {
+      state.balance = 1000.0;
+      state.streak = 0;
+      updateBalanceAndStreak();
+      saveState();
+    });
+
     // Collapse panels
     collapseLeftBtn.addEventListener('click', () => {
       leftPanel.classList.toggle('collapsed');
@@ -194,8 +203,11 @@
     });
 
     // Resize
-    window.addEventListener('resize', resizeCanvas);
-    window.addEventListener('orientationchange', resizeCanvas);
+    window.addEventListener('resize', () => { applyResponsivePanels(); resizeCanvas(); });
+    window.addEventListener('orientationchange', () => { applyResponsivePanels(); resizeCanvas(); });
+
+    // Apply initial responsive layout for mobile
+    applyResponsivePanels();
 
     // Auto loop will handle auto mode timing inside update
   }
@@ -273,12 +285,27 @@
   }
 
   function computeGeometry() {
-    // Trapezoid based on rows
+    // Build a true triangular board whose top width matches the first peg row
     const rows = state.rows;
-    const pegGap = 24; // base logical units before scaling
-    const height = SPAWN_HEIGHT + rows * pegGap * 1.25 + 120; // logical height
-    const topWidth = Math.max(200, (state.pattern === 'point' ? 120 : 180));
-    const bottomWidth = topWidth + rows * pegGap * 0.9 + 140;
+    const gapX = 24; // horizontal spacing between pegs
+    const gapY = 26; // vertical spacing (for height)
+
+    // Top row: 3 pegs for all non-"point" patterns
+    const topCount = (state.pattern === 'point') ? 1 : 3;
+    const bottomCount = topCount + (rows - 1);
+
+    const topPegWidth = Math.max(0, (topCount - 1) * gapX);
+    const bottomPegWidth = Math.max(0, (bottomCount - 1) * gapX);
+
+    // Add a little horizontal breathing room so balls don't clip edges
+    const padTopX = 40;
+    const padBottomX = 120;
+
+    const topWidth = topPegWidth + padTopX;
+    const bottomWidth = bottomPegWidth + padBottomX;
+
+    // Height to include spawn area + all rows + slot area
+    const height = SPAWN_HEIGHT + (rows - 1) * gapY + 120;
 
     trapezoid.top = 0;
     trapezoid.bottom = height;
@@ -301,7 +328,10 @@
   }
 
   function effectiveRows() {
-    return state.pattern === 'point' ? (state.rows - 1) : (3 + state.rows - 1);
+    // Effective row count equals the number of pegs in the bottom row.
+    // For a triangle starting with 3 pegs, bottom has (rows + 2) pegs,
+    // which leads to (rows + 3) slots.
+    return state.pattern === 'point' ? (state.rows - 1) : (state.rows + 2);
   }
 
   function computePegs() {
@@ -410,6 +440,13 @@
       c = (c * (n - i)) / (i + 1);
     }
     return c;
+  }
+
+  // Collapse side panels automatically on small screens for mobile usability
+  function applyResponsivePanels() {
+    const isNarrow = window.innerWidth < 700;
+    leftPanel.classList.toggle('collapsed', isNarrow);
+    rightPanel.classList.toggle('collapsed', false); // keep stats visible; user can collapse manually
   }
 
   // Resize and fit canvas between panels
