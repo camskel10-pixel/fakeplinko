@@ -2,11 +2,11 @@
   'use strict';
 
   // Constants
-  const GRAVITY_BASE = 0.31;
+  const GRAVITY_BASE = 0.42;
   const RESTITUTION_BASE = 0.50;
   const TANGENTIAL_BASE = 0.88;
   const WALL_REST = 0.40;
-  const AIR_DRAG = 0.010;
+  const AIR_DRAG = 0.006;
   const JITTER = 0.10;
   const MAX_VX = 1.6;
   const SPAWN_HEIGHT = 60;
@@ -616,9 +616,8 @@
         const gScale = b.power?.slow ? 0.45 : 1;
         const grav = GRAVITY_BASE * gScale;
 
-        // Air drag
+        // Air drag (horizontal only)
         b.vx *= (1 - AIR_DRAG);
-        b.vy *= (1 - AIR_DRAG);
 
         // Magnet pull toward best multiplier slot
         if (b.power?.magnet && slots.length) {
@@ -633,7 +632,8 @@
         }
 
         // Integrate
-        b.vy += grav * dt * 60 / 100; // scale to feel right
+        // Integrate gravity (per fixed step)
+        b.vy += grav * dt * 60;
         b.x += b.vx;
         b.y += b.vy;
 
