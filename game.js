@@ -711,10 +711,12 @@
             b.x += nx * overlap;
             b.y += ny * overlap;
 
-            // Minimal horizontal bias to break perfect top-center symmetry (no vy change)
-            if (b.vy > 0 && Math.abs(b.vx) < 0.02) {
-              const sign = (b.id % 2 === 0) ? 1 : -1;
-              b.vx += sign * 0.06;
+            // Lateral damping and tiny deterministic bias to avoid zig-zag channels (no vy change)
+            {
+              const H_DAMP = 0.85; // 15% lateral energy loss per tap
+              const H_BIAS = 0.02; // tiny horizontal bias
+              const sign = (b.id % 2 === 1) ? 1 : -1;
+              b.vx = b.vx * H_DAMP + sign * H_BIAS;
             }
           }
         }
