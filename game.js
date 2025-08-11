@@ -2,16 +2,16 @@
   'use strict';
 
   // Constants
-  const GRAVITY_BASE = 0.31;
+  const GRAVITY_BASE = 1.4;
   const RESTITUTION_BASE = 0.50;
-  const TANGENTIAL_BASE = 0.88;
+  const TANGENTIAL_BASE = 0.92;
   const WALL_REST = 0.40;
-  const AIR_DRAG = 0.010;
-  const JITTER = 0.10;
-  const MAX_VX = 1.6;
+  const AIR_DRAG = 0.002;
+  const JITTER = 0.12;
+  const MAX_VX = 2.6;
   const SPAWN_HEIGHT = 60;
-  const INITIAL_VY = 0.65;
-  const MIN_VY_AFTER_HIT = 0.12;
+  const INITIAL_VY = 1.6;
+  const MIN_VY_AFTER_HIT = 0.20;
 
   const STORAGE_KEY = 'plinko.save.v2';
 
@@ -53,7 +53,7 @@
   // Game state
   const defaultState = {
     risk: 'medium',
-    pattern: 'flat3',
+    shape: 'triangle',
     rows: 12,
     bet: 1.0,
     ballColor: '#4dd2ff',
@@ -116,8 +116,8 @@
     }
   }
   function saveState() {
-    const {risk, pattern, rows, bet, ballColor, balance, streak, leaderboard, mode} = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({risk, pattern, rows, bet, ballColor, balance, streak, leaderboard, mode}));
+    const {risk, shape, rows, bet, ballColor, balance, streak, leaderboard, mode} = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({risk, shape, rows, bet, ballColor, balance, streak, leaderboard, mode}));
   }
 
   function initChips() {
@@ -162,7 +162,7 @@
 
     // Selects and range
     riskSelect.addEventListener('change', () => { state.risk = riskSelect.value; recomputeBoard(); saveState(); });
-    patternSelect.addEventListener('change', () => { state.pattern = patternSelect.value; recomputeBoard(); saveState(); });
+    patternSelect.addEventListener('change', () => { state.shape = patternSelect.value; recomputeBoard(); saveState(); });
     rowsRange.addEventListener('input', () => { state.rows = parseInt(rowsRange.value, 10); rowsLabel.textContent = String(state.rows); recomputeBoard(); saveState(); });
 
     // Drop
@@ -225,7 +225,7 @@
 
     // Selects
     riskSelect.value = state.risk;
-    patternSelect.value = state.pattern;
+    patternSelect.value = state.shape || 'triangle';
     rowsRange.value = String(state.rows);
     rowsLabel.textContent = String(state.rows);
 
@@ -285,27 +285,35 @@
   }
 
   function computeGeometry() {
-    // Build a true triangular board whose top width matches the first peg row
     const rows = state.rows;
-    const gapX = 36; // horizontal spacing between pegs (increased)
-    const gapY = Math.round(gapX * Math.sqrt(3) / 2); // vertical spacing for equilateral triangle
+    const gapX = 36; // horizontal spacing between pegs
+    const gapY = Math.round(gapX * Math.sqrt(3) / 2); // vertical spacing for equilateral triangle spacing
 
-    // Top row: 3 pegs for all non-"point" patterns
-    const topCount = (state.pattern === 'point') ? 1 : 3;
-    const bottomCount = topCount + (rows - 1);
+    let topCount;
+    let bottomCount;
+    if ((state.shape || 'triangle') === 'triangle') {
+      topCount = 3;
+      bottomCount = topCount + (rows - 1);
+    } else {
+      // square/circle use a constant width across
+      const cols = rows + 2;
+      topCount = cols;
+      bottomCount = cols;
+    }
 
     const topPegWidth = Math.max(0, (topCount - 1) * gapX);
     const bottomPegWidth = Math.max(0, (bottomCount - 1) * gapX);
 
-    // Add a little horizontal breathing room so balls don't clip edges
-    const padTopX = 80; // extra margin left/right at the top
-    const padBottomX = 180; // extra margin left/right at the bottom
+    // Board horizontal padding inside outline
+    const padTopX = 60;
+    const padBottomX = 140;
 
     const topWidth = topPegWidth + padTopX;
     const bottomWidth = bottomPegWidth + padBottomX;
 
     // Height to include spawn area + all rows + slot area
-    const height = SPAWN_HEIGHT + (rows - 1) * gapY + 120;
+    const gridRowsForHeight = ((state.shape || 'triangle') === 'triangle') ? rows : (rows + 2);
+    const height = SPAWN_HEIGHT + (gridRowsForHeight - 1) * gapY + 120;
 
     trapezoid.top = 0;
     trapezoid.bottom = height;
@@ -317,7 +325,6 @@
     // Slots aligned to bottom width
     const effRows = effectiveRows();
     const slotCount = effRows + 1;
-    // ensure slots align with bottom peg spacing
     const slotGap = (trapezoid.rightBottom - trapezoid.leftBottom) / slotCount;
     slots = [];
     for (let i = 0; i < slotCount; i++) {
@@ -330,46 +337,56 @@
 
   function effectiveRows() {
     // Effective row count equals the number of pegs in the bottom row.
-    // For a triangle starting with 3 pegs, bottom has (rows + 2) pegs,
-    // which leads to (rows + 3) slots.
-    return state.pattern === 'point' ? (state.rows - 1) : (state.rows + 2);
+    const shape = state.shape || 'triangle';
+    if (shape === 'triangle') {
+      return state.rows + 2;
+    }
+    // square/circle: use a constant width across
+    return state.rows + 2;
   }
 
   function computePegs() {
     pegs = [];
     const rows = state.rows;
-    const effRows = effectiveRows();
+    const shape = state.shape || 'triangle';
     const gapX = 36;
     const gapY = Math.round(gapX * Math.sqrt(3) / 2);
     const startY = SPAWN_HEIGHT;
 
-    // Patterns
-    const pattern = state.pattern;
-    for (let r = 0; r < rows; r++) {
-      let count;
-      if (pattern === 'point') {
-        count = 1 + r;
-      } else if (pattern === 'flat3') {
-        count = 3 + r;
-      } else {
-        count = 3 + r;
-      }
-      let bias = 0;
-      if (pattern === 'leanL') bias = -0.4 * r;
-      if (pattern === 'leanR') bias = 0.4 * r;
-
-      const rowY = startY + r * gapY;
-      for (let c = 0; c < count; c++) {
+    if (shape === 'triangle') {
+      for (let r = 0; r < rows; r++) {
+        const count = 3 + r;
+        const rowY = startY + r * gapY;
         const totalWidth = (count - 1) * gapX;
-        let x = -totalWidth / 2 + c * gapX + bias;
+        for (let c = 0; c < count; c++) {
+          const x = -totalWidth / 2 + c * gapX;
+          pegs.push({ x, y: rowY, r: 5 });
+        }
+      }
+      return;
+    }
+
+    // Square / Circle
+    const cols = rows + 2;
+    const totalWidth = (cols - 1) * gapX;
+    const gridRows = rows + 2;
+
+    for (let r = 0; r < gridRows; r++) {
+      const rowY = startY + r * gapY;
+      for (let c = 0; c < cols; c++) {
+        const x = -totalWidth / 2 + c * gapX;
         pegs.push({ x, y: rowY, r: 5 });
       }
     }
 
-    if (pattern === 'sparse') {
-      pegs = pegs.filter((p, i) => {
-        if (p.y === startY) return true; // keep first row
-        return rng() > 0.12; // remove ~12%
+    if (shape === 'circle') {
+      // Keep only pegs within a circle centered at (0, startY + (gridRows-1)*gapY/2)
+      const cy = startY + (gridRows - 1) * gapY / 2;
+      const radius = Math.min(totalWidth / 2, (gridRows - 1) * gapY / 2);
+      pegs = pegs.filter(p => {
+        const dx = p.x - 0;
+        const dy = p.y - cy;
+        return (dx*dx + dy*dy) <= (radius * radius);
       });
     }
   }
@@ -379,52 +396,26 @@
   function computeMultipliers() {
     const rowsEff = effectiveRows();
     const slotsCount = rowsEff + 1;
-    // Binomial probabilities p=0.5
-    const probs = [];
-    let total = 0;
-    for (let k = 0; k <= rowsEff; k++) {
-      const p = binomial(rowsEff, k) / Math.pow(2, rowsEff);
-      probs.push(p);
-      total += p;
-    }
-    for (let i = 0; i < probs.length; i++) probs[i] /= total;
-
-    // Risk shaping
-    const profiles = {
-      verylow: { edgeBoost: 1.6, centerPenalty: 0.95 },
-      low: { edgeBoost: 2.1, centerPenalty: 0.86 },
-      medium: { edgeBoost: 3.0, centerPenalty: 0.70 },
-      high: { edgeBoost: 4.2, centerPenalty: 0.52 },
-      extreme: { edgeBoost: 6.0, centerPenalty: 0.40 },
-    };
-    const prof = profiles[state.risk] || profiles.medium;
-
-    const shaped = [];
     const center = rowsEff / 2;
-    let sum = 0;
-    for (let i = 0; i < probs.length; i++) {
+
+    const centerMin = 0.5; // lowest in the middle
+    const edgeMax = 1000; // highest at the far sides
+    const power = 2.0; // curve sharpness
+
+    slotMultipliers = [];
+    for (let i = 0; i < slotsCount; i++) {
       const dist = Math.abs(i - center);
-      const maxDist = center;
-      const t = maxDist === 0 ? 0 : dist / maxDist; // 0 center, 1 edge
-      const weight = (1 - t) * prof.centerPenalty + (t) * prof.edgeBoost;
-      const v = Math.max(1e-6, probs[i] * weight);
-      shaped.push(v);
-      sum += v;
+      const t = center === 0 ? 1 : dist / center; // 0 at center, 1 at edges
+      const m = centerMin + (edgeMax - centerMin) * Math.pow(t, power);
+      // rounding
+      let rounded = m;
+      if (rounded >= 100) rounded = Math.round(rounded); // whole numbers
+      else if (rounded >= 10) rounded = Math.round(rounded);
+      else if (rounded >= 5) rounded = Math.round(rounded * 2) / 2;
+      else rounded = Math.round(rounded * 10) / 10;
+      slotMultipliers.push(rounded);
     }
-    for (let i = 0; i < shaped.length; i++) shaped[i] /= sum;
 
-    // Given RTP ~ 0.98, compute multipliers such that sum(prob * mult) = RTP
-    const RTP = 0.98;
-    slotMultipliers = shaped.map(p => RTP / p);
-
-    // Rounding rules
-    slotMultipliers = slotMultipliers.map(m => {
-      if (m >= 10) return Math.round(m);
-      if (m >= 5) return Math.round(m * 2) / 2; // .5 steps
-      return Math.round(m * 10) / 10; // .1 steps
-    });
-
-    // Assign to slots if computed
     if (slots.length === slotMultipliers.length) {
       for (let i = 0; i < slots.length; i++) slots[i].mult = slotMultipliers[i];
     }
@@ -458,7 +449,7 @@
     const availH = window.innerHeight;
 
     // Compute transform to fit trapezoid into available area with some padding
-    const pad = 20;
+    const pad = 8; // reduced padding to make board appear larger
     const boardWidthTop = trapezoid.rightTop - trapezoid.leftTop;
     const boardWidthBottom = trapezoid.rightBottom - trapezoid.leftBottom;
     const boardWidth = Math.max(boardWidthTop, boardWidthBottom);
@@ -577,12 +568,13 @@
     const base = {
       x: xCenter + rx,
       y: SPAWN_HEIGHT,
-      vx: (rng() - 0.5) * 0.2,
+      vx: (rng() - 0.5) * 0.3,
       vy: INITIAL_VY,
       r: 6.5,
       color,
       windApplied: false,
       explodedPegId: null,
+      trail: [],
     };
     if (powerups.multiball) {
       const dx = 8;
@@ -669,9 +661,16 @@
         }
 
         // Integrate
-        b.vy += grav * dt * 60 / 100; // scale to feel right
+        b.vy += grav * dt * 60 / 60; // faster gravity application
         b.x += b.vx;
         b.y += b.vy;
+
+        // Trail
+        const tr = b.trail;
+        if (tr) {
+          tr.push({ x: b.x, y: b.y });
+          if (tr.length > 18) tr.shift();
+        }
 
         // Wind once at mid
         const midY = (trapezoid.bottom - trapezoid.top) * 0.5;
@@ -793,6 +792,21 @@
     drawStatic();
     setTransform();
 
+    // Trails
+    for (const b of balls) {
+      const tr = b.trail || [];
+      for (let i = 0; i < tr.length; i++) {
+        const t = i / tr.length;
+        const alpha = Math.max(0, Math.min(1, t)) * 0.6; // fade in
+        const radius = Math.max(1.5, b.r * (0.35 + 0.65 * t));
+        ctx.beginPath();
+        ctx.fillStyle = hexWithAlpha(b.color, alpha);
+        ctx.arc(tr[i].x, tr[i].y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Balls
     for (const b of balls) {
       ctx.beginPath();
       ctx.fillStyle = b.color;
@@ -809,6 +823,15 @@
     state.leaderboard.sort((a, b) => b.payout - a.payout);
     state.leaderboard = state.leaderboard.slice(0, 10);
     renderLeaderboard();
+  }
+
+  function hexWithAlpha(hex, alpha) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!m) return `rgba(255,255,255,${alpha})`;
+    const r = parseInt(m[1], 16);
+    const g = parseInt(m[2], 16);
+    const b = parseInt(m[3], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
   // Initial build
