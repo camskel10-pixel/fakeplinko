@@ -361,9 +361,8 @@
         const count = TOP_COUNT + r; // 3,4,5,...
         const rowY = startY + r * gapY;
         const totalWidth = (count - 1) * gapX;
-        const stagger = (r % 2 === 0) ? 0 : gapX / 2;
         for (let c = 0; c < count; c++) {
-          const x = -totalWidth / 2 - stagger + c * gapX;
+          const x = -totalWidth / 2 + c * gapX;
           pegs.push({ x, y: rowY, r: 5 });
         }
       }
