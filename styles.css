@@ -50,8 +50,40 @@ body {
 .left { width: var(--panelWidth); }
 .right { width: var(--panelWidth); }
 
-.canvas-wrap { position: relative; display: grid; place-items: center; }
-#board { width: 100%; height: 100vh; display: block; }
+.board-wrap { perspective: 900px; }
+
+/* Use existing canvas container */
+.canvas-wrap { perspective: 900px; position: relative; }
+
+/* Treat the canvas as the board surface */
+#board {
+  transform: rotateX(16deg);
+  background: radial-gradient(120% 120% at 50% -10%, #101625 0%, #0a0f1c 45%, #060a12 100%);
+  border-radius: 16px;
+}
+
+/* Vignette + inner glow on board edges */
+.canvas-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 60px rgba(0,0,0,0.6),
+    inset 0 0 140px rgba(16,185,129,0.06);
+  border-radius: 16px;
+}
+
+/* Optional parallax dots */
+.bg-dots { position: absolute; inset: 0; background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px); background-size: 18px 18px; filter: blur(0.2px); pointer-events: none; }
+
+/* Peg and ball classes (for potential DOM overlays; harmless if unused) */
+.peg { width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #2c3753 15%, #141b2d 55%, #0d1424 100%); box-shadow: inset 1px 1px 2px rgba(255,255,255,0.08), inset -2px -2px 4px rgba(0,0,0,0.45), 0 3px 10px rgba(0,0,0,0.55); outline: 0 !important; border: 0 !important; }
+.ball { width: 14px; height: 14px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff 8%, #f6a93b 15%, #df4f4f 55%, #8b1c1c 100%); box-shadow: 0 6px 18px rgba(0,0,0,0.55); }
+
+/* Slot labels: vivid colored text only */
+.slot-label { background: transparent; border: 0; outline: 0; box-shadow: none; font-weight: 800; letter-spacing: 0.5px; text-shadow: 0 2px 6px rgba(0,0,0,0.6); }
+.slot, .slot * { background: transparent !important; border: 0 !important; outline: 0 !important; box-shadow: none !important; }
 
 .card {
   background: linear-gradient(180deg, var(--cardTop), var(--cardBottom));
