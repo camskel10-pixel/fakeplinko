@@ -2,11 +2,11 @@
   'use strict';
 
   // Constants
-  const GRAVITY_BASE = 1.0; // vertical only
-  const RESTITUTION_BASE = 0.02;
-  const TANGENTIAL_BASE = 0.55; // emulate frictional losses
+  const GRAVITY_BASE = 1.1; // vertical only
+  const RESTITUTION_BASE = 0.15; // ~0.12–0.18
+  const TANGENTIAL_BASE = 1.0; // preserve slide
   const WALL_REST = 0.02;
-  const AIR_DRAG = 0.03; // frictionAir-like
+  const AIR_DRAG = 0.015; // frictionAir-like
   const JITTER = 0.0; // no random kicks
   const MAX_VX = 2.0; // further limited per vy each tick
   const SPAWN_HEIGHT = 60;
@@ -95,6 +95,7 @@
   };
 
   // Runtime
+  let nextBallId = 1;
   let balls = [];
   let lastTime = 0;
   let autoTimer = 0;
@@ -587,8 +588,9 @@
   function spawnBall() {
     const xCenter = (trapezoid.leftTop + trapezoid.rightTop) / 2;
     const color = state.ballColor;
+    const sign = ((state._dropId = (state._dropId || 0) + 1) % 2 === 0) ? 1 : -1;
     const base = {
-      x: xCenter,
+      x: xCenter + sign * 0.5, // micro-offset to avoid perfect apex landings
       y: SPAWN_HEIGHT,
       vx: 0,
       vy: INITIAL_VY,
@@ -597,6 +599,7 @@
       windApplied: false,
       explodedPegId: null,
       trail: [],
+      contact: { pegId: null, sinceMs: 0 },
     };
     if (powerups.multiball) {
       const dx = 8;
@@ -617,6 +620,7 @@
     const spawned = spawnBall();
     for (const b of spawned) {
       b.power = { ...active };
+      b.id = nextBallId++;
       balls.push(b);
     }
 
@@ -705,41 +709,72 @@
             b.x += nx * overlap;
             b.y += ny * overlap;
 
-            // Reflect
-            const vn = b.vx * nx + b.vy * ny;
-            const vtX = b.vx - vn * nx;
-            const vtY = b.vy - vn * ny;
+            // Split velocity into normal/tangent
+            const vnMag = b.vx * nx + b.vy * ny;
+            const vnX = vnMag * nx;
+            const vnY = vnMag * ny;
+            const vtX = b.vx - vnX;
+            const vtY = b.vy - vnY;
 
-            let rest = RESTITUTION_BASE;
-            let tang = TANGENTIAL_BASE;
-            if (b.power?.bumper) {
-              rest = Math.min(0.85, RESTITUTION_BASE + 0.25);
-              tang = Math.min(1.0, TANGENTIAL_BASE + 0.08);
+            // Reflect normal with low restitution; preserve tangent for slide
+            const rest = RESTITUTION_BASE; // ~0.15
+            const vnRX = -rest * vnX;
+            const vnRY = -rest * vnY;
+            let newVx = vtX + vnRX;
+            let newVy = vtY + vnRY;
+
+            // Deterministic tangent bias if on top and nearly vertical normal
+            if (Math.abs(newVx) < 0.03 && ny < -0.9) {
+              const tx = -ny; // tangent = (-ny, nx)
+              const ty = nx;
+              const sign = (b.id % 2 === 1) ? 1 : -1;
+              const bias = 0.06 * Math.abs(b.vy);
+              newVx += sign * bias * tx;
+              newVy += sign * bias * ty;
             }
 
-            const j = -(1 + rest) * vn;
-            b.vx = vtX * tang + j * nx;
-            b.vy = vtY * tang + j * ny;
+            b.vx = newVx * TANGENTIAL_BASE;
+            b.vy = newVy * TANGENTIAL_BASE;
 
-            // No jitter
-
-            // Clamp and floor vy; also clamp horizontal velocity relative to vertical for stability
-            const maxHX = Math.abs(b.vy) * 0.2;
-            b.vx = Math.max(-maxHX, Math.min(maxHX, b.vx));
-            if (Math.abs(b.vx) < 0.01) b.vx = 0;
-            if (Math.abs(b.vy) < MIN_VY_AFTER_HIT) b.vy = Math.sign(b.vy) * MIN_VY_AFTER_HIT;
-
-            // Explode peg once
-            if (b.power?.explode && b.explodedPegId == null) {
-              p.r = 0; // remove
-              b.explodedPegId = i;
+            // Contact tracking for per-tick guard
+            if (b.contact.pegId === i) {
+              b.contact.sinceMs += 16; // approx per substep
+            } else {
+              b.contact.pegId = i;
+              b.contact.sinceMs = 0;
             }
           }
         }
 
-        // Collide with trapezoid walls (lines)
-        collideWalls(b);
-      }
+        // Per-tick guard: if stuck on peg >120ms with tiny vx, nudge along tangent
+        if (b.contact.pegId != null && b.contact.sinceMs > 120) {
+          const p = pegs[b.contact.pegId];
+          if (p && p.r > 0) {
+            const dx = b.x - p.x;
+            const dy = b.y - p.y;
+            const d = Math.hypot(dx, dy) || 1;
+            const nx = dx / d;
+            const ny = dy / d;
+            const tx = -ny;
+            const ty = nx;
+            if (Math.abs(b.vx) < 0.02) {
+              const nudge = 0.02 * Math.abs(b.vy);
+              b.vx += nudge * tx;
+              b.vy += nudge * ty * 0.1; // tiny vertical component
+            }
+          }
+          // reset timer after nudge so it doesn't accumulate forever
+          b.contact.sinceMs = 0;
+        }
+
+                 // Clamp relation between horizontal and vertical velocity to avoid ping-pong, but allow natural deflection
+         const maxHX = Math.abs(b.vy) * 0.6;
+         b.vx = Math.max(-maxHX, Math.min(maxHX, b.vx));
+         if (Math.abs(b.vy) < MIN_VY_AFTER_HIT) b.vy = Math.sign(b.vy) * MIN_VY_AFTER_HIT;
+
+         // Collide with trapezoid walls (lines)
+         collideWalls(b);
+}
 
       // Remove balls that reached bottom and settle payouts
       const remain = [];
