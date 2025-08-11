@@ -53,7 +53,6 @@
   // Game state
   const defaultState = {
     risk: 'medium',
-    pattern: 'flat3',
     shape: 'triangle',
     rows: 12,
     bet: 1.0,
@@ -117,8 +116,8 @@
     }
   }
   function saveState() {
-    const {risk, pattern, shape, rows, bet, ballColor, balance, streak, leaderboard, mode} = state;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({risk, pattern, shape, rows, bet, ballColor, balance, streak, leaderboard, mode}));
+    const {risk, shape, rows, bet, ballColor, balance, streak, leaderboard, mode} = state;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({risk, shape, rows, bet, ballColor, balance, streak, leaderboard, mode}));
   }
 
   function initChips() {
