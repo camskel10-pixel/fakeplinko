@@ -589,8 +589,8 @@
     const xCenter = (trapezoid.leftTop + trapezoid.rightTop) / 2;
     const color = state.ballColor;
     const sign = ((state._dropId = (state._dropId || 0) + 1) % 2 === 0) ? 1 : -1;
-    const rand = Math.random();
-         const jx = (rand * 2 - 1) * 0.10; // tiny horizontal jitter per spec
+         const rand = rng();
+          const jx = (rand * 2 - 1) * 0.12; // tiny horizontal jitter per spec
     const base = {
       x: xCenter + sign * 0.5,
       y: SPAWN_HEIGHT,
