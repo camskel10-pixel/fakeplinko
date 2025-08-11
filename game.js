@@ -287,14 +287,15 @@
 
   function computeGeometry() {
     const rows = state.rows;
-    const gapX = 36; // horizontal spacing between pegs
-    const gapY = Math.round(gapX * Math.sqrt(3) / 2); // vertical spacing for equilateral triangle spacing
+    const gapX = 28; // horizontal spacing between pegs
+    const gapY = 24; // vertical spacing
 
     let topCount;
     let bottomCount;
     if ((state.shape || 'triangle') === 'triangle') {
-      topCount = 1; // classic plinko apex
-      bottomCount = topCount + (rows - 1); // equals rows
+      const TOP_COUNT = 3; // flat top of 3
+      topCount = TOP_COUNT;
+      bottomCount = TOP_COUNT + (rows - 1); // 3,4,5,... => bottom = rows+2
     } else {
       // square/circle use a constant width across matching slots = rows + 1
       const cols = rows + 1;
@@ -346,17 +347,19 @@
     pegs = [];
     const rows = state.rows;
     const shape = state.shape || 'triangle';
-    const gapX = 36;
-    const gapY = Math.round(gapX * Math.sqrt(3) / 2);
-    const startY = SPAWN_HEIGHT;
+    const gapX = 28;
+    const gapY = 24;
+    const startY = SPAWN_HEIGHT + 30; // topY offset
 
     if (shape === 'triangle') {
+      const TOP_COUNT = 3;
       for (let r = 0; r < rows; r++) {
-        const count = 1 + r; // apex 1, grows by one each row
+        const count = TOP_COUNT + r; // 3,4,5,...
         const rowY = startY + r * gapY;
         const totalWidth = (count - 1) * gapX;
+        const stagger = (r % 2 === 0) ? 0 : gapX / 2;
         for (let c = 0; c < count; c++) {
-          const x = -totalWidth / 2 + c * gapX;
+          const x = -totalWidth / 2 - stagger + c * gapX;
           pegs.push({ x, y: rowY, r: 5 });
         }
       }
@@ -416,22 +419,18 @@
     for (let k = 0; k <= rowsEff; k++) probs.push(binomial(rowsEff, k) / Math.pow(2, rowsEff));
     const centerIdx = Math.floor(slotsCount / 2);
 
-    // Base curve: set center near 0.3..1.0 and edges higher, smooth growth
-    const centerVal = risk === 'low' ? 0.9 : risk === 'high' ? 0.3 : 0.5;
-    const edgeVal = risk === 'low' ? 4 : risk === 'high' ? 200 : 40;
-    const power = risk === 'low' ? 1.4 : risk === 'high' ? 2.4 : 2.0;
+    // Binomial-shaped multipliers: high edges, low center
+    const gamma = risk === 'low' ? 0.55 : risk === 'high' ? 1.15 : 0.9; // edge emphasis
+    const centerFloor = risk === 'low' ? 1.0 : risk === 'high' ? 0.3 : 0.5;
+    const shape = probs.map(x => Math.pow(1 / Math.max(1e-9, x), gamma));
+    const sC = shape[centerIdx];
+    for (let i = 0; i < shape.length; i++) shape[i] /= sC;
 
-    const raw = new Array(slotsCount).fill(0);
-    for (let i = 0; i < slotsCount; i++) {
-      const t = Math.abs(i - centerIdx) / centerIdx;
-      raw[i] = centerVal + (edgeVal - centerVal) * Math.pow(t, power);
-    }
-
-    // Scale so sum(p[k]*m[k]) = RTP
-    let expected = 0;
-    for (let i = 0; i < raw.length; i++) expected += probs[i] * raw[i];
-    const scale = targetRTP / expected;
-    slotMultipliers = raw.map(v => v * scale);
+    // Solve scale so EV matches RTP: sum p[i]*(base + s*(shape[i]-1)) = RTP
+    const base = centerFloor;
+    const denom = probs.reduce((a, pi, i) => a + pi * (shape[i] - 1), 0);
+    const s = Math.max(0.01, (targetRTP - base) / Math.max(1e-9, denom));
+    slotMultipliers = shape.map(v => Math.max(0.1, base + s * (v - 1)));
 
     // Round presentation
     slotMultipliers = slotMultipliers.map(m => {
@@ -543,6 +542,10 @@
 
   function drawSlots() {
     const gap = (trapezoid.rightBottom - trapezoid.leftBottom) / (slots.length);
+    if (!slots.length) return;
+    const mults = slots.map(s => s.mult);
+    const min = Math.min(...mults), max = Math.max(...mults);
+
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
       const cx = s.cx;
@@ -552,20 +555,19 @@
       const x = cx - w / 2;
       const y = cy - h / 2;
 
-      // glossy rounded chip
+      const color = colorForMultiplier(s.mult, min, max);
+
+      // rounded chip with vivid fill
       const r = 8;
       roundRect(ctx, x, y, w, h, r);
-      const grad = ctx.createLinearGradient(0, y, 0, y + h);
-      grad.addColorStop(0, '#1b2140');
-      grad.addColorStop(1, '#0f142b');
-      ctx.fillStyle = grad;
+      ctx.fillStyle = color;
       ctx.fill();
-      ctx.strokeStyle = '#2a3150';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#091123';
+      ctx.lineWidth = 1.2;
       ctx.stroke();
 
       // label
-      ctx.fillStyle = '#cde1ff';
+      ctx.fillStyle = '#0b1020';
       ctx.font = 'bold 12px system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -584,15 +586,26 @@
     ctx.closePath();
   }
 
+  function colorForMultiplier(m, min, max) {
+    const denom = Math.max(1e-6, max - min);
+    const t = Math.pow((m - min) / denom, 0.7);
+    const hue = 200 - t * 200; // 200 (blue) -> 0 (red)
+    const sat = 88;
+    const light = 52;
+    return `hsl(${hue}, ${sat}%, ${light}%)`;
+  }
+
   // Physics
   function spawnBall() {
     const xCenter = (trapezoid.leftTop + trapezoid.rightTop) / 2;
     const color = state.ballColor;
     const sign = ((state._dropId = (state._dropId || 0) + 1) % 2 === 0) ? 1 : -1;
+    const rand = (state._dropId * 9301 + 49297) % 233280 / 233280; // deterministic seed
+    const jx = (rand * 2 - 1) * 0.25; // tiny horizontal jitter
     const base = {
       x: xCenter + sign * 0.5, // micro-offset to avoid perfect apex landings
       y: SPAWN_HEIGHT,
-      vx: 0,
+      vx: jx,
       vy: INITIAL_VY,
       r: 6.5,
       color,
