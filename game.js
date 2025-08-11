@@ -2,16 +2,16 @@
   'use strict';
 
   // Constants
-  const GRAVITY_BASE = 0.52;
+  const GRAVITY_BASE = 1.4;
   const RESTITUTION_BASE = 0.50;
-  const TANGENTIAL_BASE = 0.90;
+  const TANGENTIAL_BASE = 0.92;
   const WALL_REST = 0.40;
-  const AIR_DRAG = 0.006;
+  const AIR_DRAG = 0.002;
   const JITTER = 0.12;
-  const MAX_VX = 2.2;
+  const MAX_VX = 2.6;
   const SPAWN_HEIGHT = 60;
-  const INITIAL_VY = 0.90;
-  const MIN_VY_AFTER_HIT = 0.16;
+  const INITIAL_VY = 1.6;
+  const MIN_VY_AFTER_HIT = 0.20;
 
   const STORAGE_KEY = 'plinko.save.v2';
 
@@ -34,7 +34,6 @@
   const patternSelect = document.getElementById('patternSelect');
   const rowsRange = document.getElementById('rowsRange');
   const rowsLabel = document.getElementById('rowsLabel');
-  const shapeSelect = document.getElementById('shapeSelect');
 
   const chipRow = document.getElementById('chipRow');
   const dropBtn = document.getElementById('dropBtn');
@@ -164,9 +163,8 @@
 
     // Selects and range
     riskSelect.addEventListener('change', () => { state.risk = riskSelect.value; recomputeBoard(); saveState(); });
-    patternSelect.addEventListener('change', () => { state.pattern = patternSelect.value; recomputeBoard(); saveState(); });
+    patternSelect.addEventListener('change', () => { state.shape = patternSelect.value; recomputeBoard(); saveState(); });
     rowsRange.addEventListener('input', () => { state.rows = parseInt(rowsRange.value, 10); rowsLabel.textContent = String(state.rows); recomputeBoard(); saveState(); });
-    shapeSelect.addEventListener('change', () => { state.shape = shapeSelect.value; recomputeBoard(); saveState(); });
 
     // Drop
     dropBtn.addEventListener('click', tryDrop);
@@ -228,10 +226,9 @@
 
     // Selects
     riskSelect.value = state.risk;
-    patternSelect.value = state.pattern;
+    patternSelect.value = state.shape || 'triangle';
     rowsRange.value = String(state.rows);
     rowsLabel.textContent = String(state.rows);
-    shapeSelect.value = state.shape || 'triangle';
 
     // Balance/Streak
     updateBalanceAndStreak();
@@ -296,7 +293,7 @@
     let topCount;
     let bottomCount;
     if ((state.shape || 'triangle') === 'triangle') {
-      topCount = (state.pattern === 'point') ? 1 : 3;
+      topCount = 3;
       bottomCount = topCount + (rows - 1);
     } else {
       // square/circle use a constant width across
@@ -343,7 +340,7 @@
     // Effective row count equals the number of pegs in the bottom row.
     const shape = state.shape || 'triangle';
     if (shape === 'triangle') {
-      return state.pattern === 'point' ? (state.rows - 1) : (state.rows + 2);
+      return state.rows + 2;
     }
     // square/circle: use a constant width across
     return state.rows + 2;
@@ -358,33 +355,14 @@
     const startY = SPAWN_HEIGHT;
 
     if (shape === 'triangle') {
-      const pattern = state.pattern;
       for (let r = 0; r < rows; r++) {
-        let count;
-        if (pattern === 'point') {
-          count = 1 + r;
-        } else if (pattern === 'flat3') {
-          count = 3 + r;
-        } else {
-          count = 3 + r;
-        }
-        let bias = 0;
-        if (pattern === 'leanL') bias = -0.4 * r;
-        if (pattern === 'leanR') bias = 0.4 * r;
-
+        const count = 3 + r;
         const rowY = startY + r * gapY;
+        const totalWidth = (count - 1) * gapX;
         for (let c = 0; c < count; c++) {
-          const totalWidth = (count - 1) * gapX;
-          let x = -totalWidth / 2 + c * gapX + bias;
+          const x = -totalWidth / 2 + c * gapX;
           pegs.push({ x, y: rowY, r: 5 });
         }
-      }
-
-      if (pattern === 'sparse') {
-        pegs = pegs.filter((p, i) => {
-          if (p.y === startY) return true; // keep first row
-          return rng() > 0.12; // remove ~12%
-        });
       }
       return;
     }
@@ -419,52 +397,26 @@
   function computeMultipliers() {
     const rowsEff = effectiveRows();
     const slotsCount = rowsEff + 1;
-    // Binomial probabilities p=0.5
-    const probs = [];
-    let total = 0;
-    for (let k = 0; k <= rowsEff; k++) {
-      const p = binomial(rowsEff, k) / Math.pow(2, rowsEff);
-      probs.push(p);
-      total += p;
-    }
-    for (let i = 0; i < probs.length; i++) probs[i] /= total;
-
-    // Risk shaping
-    const profiles = {
-      verylow: { edgeBoost: 1.6, centerPenalty: 0.95 },
-      low: { edgeBoost: 2.1, centerPenalty: 0.86 },
-      medium: { edgeBoost: 3.0, centerPenalty: 0.70 },
-      high: { edgeBoost: 4.2, centerPenalty: 0.52 },
-      extreme: { edgeBoost: 6.0, centerPenalty: 0.40 },
-    };
-    const prof = profiles[state.risk] || profiles.medium;
-
-    const shaped = [];
     const center = rowsEff / 2;
-    let sum = 0;
-    for (let i = 0; i < probs.length; i++) {
+
+    const centerMin = 0.5; // lowest in the middle
+    const edgeMax = 1000; // highest at the far sides
+    const power = 2.0; // curve sharpness
+
+    slotMultipliers = [];
+    for (let i = 0; i < slotsCount; i++) {
       const dist = Math.abs(i - center);
-      const maxDist = center;
-      const t = maxDist === 0 ? 0 : dist / maxDist; // 0 center, 1 edge
-      const weight = (1 - t) * prof.centerPenalty + (t) * prof.edgeBoost;
-      const v = Math.max(1e-6, probs[i] * weight);
-      shaped.push(v);
-      sum += v;
+      const t = center === 0 ? 1 : dist / center; // 0 at center, 1 at edges
+      const m = centerMin + (edgeMax - centerMin) * Math.pow(t, power);
+      // rounding
+      let rounded = m;
+      if (rounded >= 100) rounded = Math.round(rounded); // whole numbers
+      else if (rounded >= 10) rounded = Math.round(rounded);
+      else if (rounded >= 5) rounded = Math.round(rounded * 2) / 2;
+      else rounded = Math.round(rounded * 10) / 10;
+      slotMultipliers.push(rounded);
     }
-    for (let i = 0; i < shaped.length; i++) shaped[i] /= sum;
 
-    // Given RTP ~ 0.98, compute multipliers such that sum(prob * mult) = RTP
-    const RTP = 0.98;
-    slotMultipliers = shaped.map(p => RTP / p);
-
-    // Rounding rules
-    slotMultipliers = slotMultipliers.map(m => {
-      if (m >= 10) return Math.round(m);
-      if (m >= 5) return Math.round(m * 2) / 2; // .5 steps
-      return Math.round(m * 10) / 10; // .1 steps
-    });
-
-    // Assign to slots if computed
     if (slots.length === slotMultipliers.length) {
       for (let i = 0; i < slots.length; i++) slots[i].mult = slotMultipliers[i];
     }
@@ -710,7 +662,7 @@
         }
 
         // Integrate
-        b.vy += grav * dt * 60 / 100; // scale to feel right
+        b.vy += grav * dt * 60 / 60; // faster gravity application
         b.x += b.vx;
         b.y += b.vy;
 
