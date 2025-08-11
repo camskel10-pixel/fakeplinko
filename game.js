@@ -2,16 +2,16 @@
   'use strict';
 
   // Constants
-  const GRAVITY_BASE = 1.4;
-  const RESTITUTION_BASE = 0.50;
-  const TANGENTIAL_BASE = 0.92;
-  const WALL_REST = 0.40;
-  const AIR_DRAG = 0.002;
-  const JITTER = 0.12;
-  const MAX_VX = 2.6;
+  const GRAVITY_BASE = 1.0; // vertical only
+  const RESTITUTION_BASE = 0.02;
+  const TANGENTIAL_BASE = 0.55; // emulate frictional losses
+  const WALL_REST = 0.02;
+  const AIR_DRAG = 0.03; // frictionAir-like
+  const JITTER = 0.0; // no random kicks
+  const MAX_VX = 2.0; // further limited per vy each tick
   const SPAWN_HEIGHT = 60;
-  const INITIAL_VY = 1.6;
-  const MIN_VY_AFTER_HIT = 0.20;
+  const INITIAL_VY = 1.0;
+  const MIN_VY_AFTER_HIT = 0.10;
 
   const STORAGE_KEY = 'plinko.save.v2';
 
@@ -292,11 +292,11 @@
     let topCount;
     let bottomCount;
     if ((state.shape || 'triangle') === 'triangle') {
-      topCount = 3;
-      bottomCount = topCount + (rows - 1);
+      topCount = 1; // classic plinko apex
+      bottomCount = topCount + (rows - 1); // equals rows
     } else {
-      // square/circle use a constant width across
-      const cols = rows + 2;
+      // square/circle use a constant width across matching slots = rows + 1
+      const cols = rows + 1;
       topCount = cols;
       bottomCount = cols;
     }
@@ -324,7 +324,7 @@
 
     // Slots aligned to bottom width
     const effRows = effectiveRows();
-    const slotCount = effRows + 1;
+    const slotCount = effRows + 1; // slots = rows + 1
     const slotGap = (trapezoid.rightBottom - trapezoid.leftBottom) / slotCount;
     slots = [];
     for (let i = 0; i < slotCount; i++) {
@@ -336,13 +336,9 @@
   }
 
   function effectiveRows() {
-    // Effective row count equals the number of pegs in the bottom row.
-    const shape = state.shape || 'triangle';
-    if (shape === 'triangle') {
-      return state.rows + 2;
-    }
-    // square/circle: use a constant width across
-    return state.rows + 2;
+    // Effective row count equals the number of rows of peg gaps (aka balls steps)
+    // For classic plinko, slots = rows + 1, so effRows = rows
+    return state.rows;
   }
 
   function computePegs() {
@@ -355,7 +351,7 @@
 
     if (shape === 'triangle') {
       for (let r = 0; r < rows; r++) {
-        const count = 3 + r;
+        const count = 1 + r; // apex 1, grows by one each row
         const rowY = startY + r * gapY;
         const totalWidth = (count - 1) * gapX;
         for (let c = 0; c < count; c++) {
@@ -367,9 +363,9 @@
     }
 
     // Square / Circle
-    const cols = rows + 2;
+    const cols = rows + 1;
     const totalWidth = (cols - 1) * gapX;
-    const gridRows = rows + 2;
+    const gridRows = rows + 1;
 
     for (let r = 0; r < gridRows; r++) {
       const rowY = startY + r * gapY;
@@ -396,25 +392,53 @@
   function computeMultipliers() {
     const rowsEff = effectiveRows();
     const slotsCount = rowsEff + 1;
-    const center = rowsEff / 2;
+    const risk = state.risk || 'medium';
 
-    const centerMin = 0.5; // lowest in the middle
-    const edgeMax = 1000; // highest at the far sides
-    const power = 2.0; // curve sharpness
+    // Exact symmetric sets for 16 rows
+    const presets16 = {
+      low:   [18, 8, 4, 2.5, 1.8, 1.4, 1.2, 1.0, 0.9, 1.0, 1.2, 1.4, 1.8, 2.5, 4, 8, 18],
+      medium:[110, 41, 10, 5, 3, 1.5, 1, 0.5, 0.3, 0.5, 1, 1.5, 3, 5, 10, 41, 110],
+      high:  [220, 75, 20, 8, 4, 2.2, 1.2, 0.6, 0.25, 0.6, 1.2, 2.2, 4, 8, 20, 75, 220],
+    };
 
-    slotMultipliers = [];
-    for (let i = 0; i < slotsCount; i++) {
-      const dist = Math.abs(i - center);
-      const t = center === 0 ? 1 : dist / center; // 0 at center, 1 at edges
-      const m = centerMin + (edgeMax - centerMin) * Math.pow(t, power);
-      // rounding
-      let rounded = m;
-      if (rounded >= 100) rounded = Math.round(rounded); // whole numbers
-      else if (rounded >= 10) rounded = Math.round(rounded);
-      else if (rounded >= 5) rounded = Math.round(rounded * 2) / 2;
-      else rounded = Math.round(rounded * 10) / 10;
-      slotMultipliers.push(rounded);
+    if (rowsEff === 16) {
+      const arr = presets16[risk] || presets16.medium;
+      slotMultipliers = arr.slice();
+      for (let i = 0; i < slots.length && i < slotMultipliers.length; i++) slots[i].mult = slotMultipliers[i];
+      return;
     }
+
+    // Otherwise generate programmatically using binomial probabilities
+    const RTPs = { low: 0.96, medium: 0.94, high: 0.92 };
+    const targetRTP = RTPs[risk] || 0.94;
+    const probs = [];
+    for (let k = 0; k <= rowsEff; k++) probs.push(binomial(rowsEff, k) / Math.pow(2, rowsEff));
+    const centerIdx = Math.floor(slotsCount / 2);
+
+    // Base curve: set center near 0.3..1.0 and edges higher, smooth growth
+    const centerVal = risk === 'low' ? 0.9 : risk === 'high' ? 0.3 : 0.5;
+    const edgeVal = risk === 'low' ? 4 : risk === 'high' ? 200 : 40;
+    const power = risk === 'low' ? 1.4 : risk === 'high' ? 2.4 : 2.0;
+
+    const raw = new Array(slotsCount).fill(0);
+    for (let i = 0; i < slotsCount; i++) {
+      const t = Math.abs(i - centerIdx) / centerIdx;
+      raw[i] = centerVal + (edgeVal - centerVal) * Math.pow(t, power);
+    }
+
+    // Scale so sum(p[k]*m[k]) = RTP
+    let expected = 0;
+    for (let i = 0; i < raw.length; i++) expected += probs[i] * raw[i];
+    const scale = targetRTP / expected;
+    slotMultipliers = raw.map(v => v * scale);
+
+    // Round presentation
+    slotMultipliers = slotMultipliers.map(m => {
+      if (m >= 100) return Math.round(m);
+      if (m >= 10) return Math.round(m);
+      if (m >= 5) return Math.round(m * 2) / 2;
+      return Math.round(m * 10) / 10;
+    });
 
     if (slots.length === slotMultipliers.length) {
       for (let i = 0; i < slots.length; i++) slots[i].mult = slotMultipliers[i];
@@ -517,7 +541,6 @@
   }
 
   function drawSlots() {
-    const radius = 14;
     const gap = (trapezoid.rightBottom - trapezoid.leftBottom) / (slots.length);
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
@@ -563,12 +586,11 @@
   // Physics
   function spawnBall() {
     const xCenter = (trapezoid.leftTop + trapezoid.rightTop) / 2;
-    const rx = (rng() - 0.5) * 18;
     const color = state.ballColor;
     const base = {
-      x: xCenter + rx,
+      x: xCenter,
       y: SPAWN_HEIGHT,
-      vx: (rng() - 0.5) * 0.3,
+      vx: 0,
       vy: INITIAL_VY,
       r: 6.5,
       color,
@@ -619,7 +641,8 @@
 
   function update(time) {
     if (!lastTime) lastTime = time;
-    const dt = Math.min(32, time - lastTime); // clamp dt
+    const dtRaw = time - lastTime;
+    const dt = Math.min(32, Math.max(8, dtRaw)); // clamp timestep spikes
     lastTime = time;
 
     autoTimer += dt;
@@ -628,6 +651,7 @@
       if (!dropBtn.disabled) tryDrop();
     }
 
+    // Solver quality hints (no Matter.js, but we emulate via substeps in stepPhysics)
     stepPhysics(dt);
     drawFrame();
 
@@ -648,17 +672,7 @@
         b.vx *= (1 - AIR_DRAG);
         b.vy *= (1 - AIR_DRAG);
 
-        // Magnet pull toward best multiplier slot
-        if (b.power?.magnet && slots.length) {
-          let bestIdx = 0;
-          let best = -Infinity;
-          for (let i = 0; i < slots.length; i++) {
-            if (slots[i].mult > best) { best = slots[i].mult; bestIdx = i; }
-          }
-          const targetX = slots[bestIdx].cx;
-          const dir = Math.sign(targetX - b.x);
-          b.vx += 0.02 * dir;
-        }
+        // Magnet removed for stable plinko physics
 
         // Integrate
         b.vy += grav * dt * 60 / 60; // faster gravity application
@@ -672,12 +686,7 @@
           if (tr.length > 18) tr.shift();
         }
 
-        // Wind once at mid
-        const midY = (trapezoid.bottom - trapezoid.top) * 0.5;
-        if (b.power?.wind && !b.windApplied && b.y > midY) {
-          b.vx += (rng() < 0.5 ? -0.8 : 0.8);
-          b.windApplied = true;
-        }
+        // Wind removed for stable plinko physics
 
         // Collide with pegs
         for (let i = 0; i < pegs.length; i++) {
@@ -712,11 +721,12 @@
             b.vx = vtX * tang + j * nx;
             b.vy = vtY * tang + j * ny;
 
-            // Jitter
-            b.vx += (rng() - 0.5) * JITTER * 0.1;
+            // No jitter
 
-            // Clamp and floor vy
-            b.vx = Math.max(-MAX_VX, Math.min(MAX_VX, b.vx));
+            // Clamp and floor vy; also clamp horizontal velocity relative to vertical for stability
+            const maxHX = Math.abs(b.vy) * 0.2;
+            b.vx = Math.max(-maxHX, Math.min(maxHX, b.vx));
+            if (Math.abs(b.vx) < 0.01) b.vx = 0;
             if (Math.abs(b.vy) < MIN_VY_AFTER_HIT) b.vy = Math.sign(b.vy) * MIN_VY_AFTER_HIT;
 
             // Explode peg once
@@ -810,8 +820,8 @@
     for (const b of balls) {
       ctx.beginPath();
       ctx.fillStyle = b.color;
-      ctx.shadowColor = b.color + 'aa';
-      ctx.shadowBlur = 6;
+      ctx.shadowColor = b.color + '33';
+      ctx.shadowBlur = 3;
       ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
       ctx.fill();
       ctx.shadowBlur = 0;
