@@ -287,8 +287,8 @@
 
   function computeGeometry() {
     const rows = state.rows;
-    const gapX = 28; // horizontal spacing between pegs
-    const gapY = 24; // vertical spacing
+    const gapX = 22; // horizontal spacing between pegs (closer)
+    const gapY = 20; // vertical spacing (closer)
 
     let topCount;
     let bottomCount;
@@ -351,8 +351,8 @@
     pegs = [];
     const rows = state.rows;
     const shape = state.shape || 'triangle';
-    const gapX = 28;
-    const gapY = 24;
+    const gapX = 22;
+    const gapY = 20;
     const startY = SPAWN_HEIGHT + 30; // topY offset
 
     if (shape === 'triangle') {
