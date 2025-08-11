@@ -4,9 +4,10 @@
   // Constants
   const GRAVITY_BASE = 1.0; // vertical only
   const RESTITUTION_BASE = 0.10; // gentle bounces
-  const TANGENTIAL_BASE = 1.0; // preserve slide
+  const TANGENTIAL_BASE = 0.96; // slight tangential damping (~friction 0.04)
   const WALL_REST = 0.03; // low restitution on walls/static
-  const AIR_DRAG = 0.012; // light damping  const JITTER = 0.0; // no random kicks
+  const AIR_DRAG = 0.02; // light damping per frame
+  const JITTER = 0.0; // no random kicks
   const MAX_VX = 2.0; // further limited per vy each tick
   const SPAWN_HEIGHT = 60;
   const INITIAL_VY = 1.0;
@@ -589,7 +590,7 @@
     const color = state.ballColor;
     const sign = ((state._dropId = (state._dropId || 0) + 1) % 2 === 0) ? 1 : -1;
     const rand = Math.random();
-    const jx = (rand * 2 - 1) * 0.08; // tiny horizontal jitter per spec
+         const jx = (rand * 2 - 1) * 0.10; // tiny horizontal jitter per spec
     const base = {
       x: xCenter + sign * 0.5,
       y: SPAWN_HEIGHT,
