@@ -2,11 +2,11 @@
   'use strict';
 
   // Constants
-  const GRAVITY_BASE = 1.1; // vertical only
-  const RESTITUTION_BASE = 0.15; // ~0.12–0.18
+  const GRAVITY_BASE = 1.0; // vertical only
+  const RESTITUTION_BASE = 0.08; // gentle bounces
   const TANGENTIAL_BASE = 1.0; // preserve slide
   const WALL_REST = 0.02;
-  const AIR_DRAG = 0.015; // frictionAir-like
+  const AIR_DRAG = 0.01; // light damping
   const JITTER = 0.0; // no random kicks
   const MAX_VX = 2.0; // further limited per vy each tick
   const SPAWN_HEIGHT = 60;
@@ -709,32 +709,11 @@
             b.x += nx * overlap;
             b.y += ny * overlap;
 
-            // Split velocity into normal/tangent
-            const vnMag = b.vx * nx + b.vy * ny;
-            const vnX = vnMag * nx;
-            const vnY = vnMag * ny;
-            const vtX = b.vx - vnX;
-            const vtY = b.vy - vnY;
-
-            // Reflect normal with low restitution; preserve tangent for slide
-            const rest = RESTITUTION_BASE; // ~0.15
-            const vnRX = -rest * vnX;
-            const vnRY = -rest * vnY;
-            let newVx = vtX + vnRX;
-            let newVy = vtY + vnRY;
-
-            // Deterministic tangent bias if on top and nearly vertical normal
-            if (Math.abs(newVx) < 0.03 && ny < -0.9) {
-              const tx = -ny; // tangent = (-ny, nx)
-              const ty = nx;
-              const sign = (b.id % 2 === 1) ? 1 : -1;
-              const bias = 0.06 * Math.abs(b.vy);
-              newVx += sign * bias * tx;
-              newVy += sign * bias * ty;
+            // Let engine handle collision; only minimal horizontal bias to break symmetry
+            if (ny < -0.9 && b.vy > 0 && Math.abs(b.vx) < 0.02) {
+              const sign = (b.id % 2 === 0) ? 1 : -1;
+              b.vx += sign * 0.08; // horizontal only, tiny
             }
-
-            b.vx = newVx * TANGENTIAL_BASE;
-            b.vy = newVy * TANGENTIAL_BASE;
 
             // Contact tracking for per-tick guard
             if (b.contact.pegId === i) {
@@ -746,31 +725,27 @@
           }
         }
 
-        // Per-tick guard: if stuck on peg >120ms with tiny vx, nudge along tangent
+        // Per-tick guard: if stuck on peg >120ms with tiny vx, nudge horizontally only
         if (b.contact.pegId != null && b.contact.sinceMs > 120) {
           const p = pegs[b.contact.pegId];
-          if (p && p.r > 0) {
+          if (p && p.r > 0 && Math.abs(b.vx) < 0.02) {
             const dx = b.x - p.x;
             const dy = b.y - p.y;
             const d = Math.hypot(dx, dy) || 1;
             const nx = dx / d;
             const ny = dy / d;
             const tx = -ny;
-            const ty = nx;
-            if (Math.abs(b.vx) < 0.02) {
-              const nudge = 0.02 * Math.abs(b.vy);
-              b.vx += nudge * tx;
-              b.vy += nudge * ty * 0.1; // tiny vertical component
-            }
+            const nudge = 0.02 * Math.abs(b.vy);
+            b.vx += nudge * tx; // horizontal only
           }
-          // reset timer after nudge so it doesn't accumulate forever
           b.contact.sinceMs = 0;
         }
 
                  // Clamp relation between horizontal and vertical velocity to avoid ping-pong, but allow natural deflection
-         const maxHX = Math.abs(b.vy) * 0.6;
-         b.vx = Math.max(-maxHX, Math.min(maxHX, b.vx));
-         if (Math.abs(b.vy) < MIN_VY_AFTER_HIT) b.vy = Math.sign(b.vy) * MIN_VY_AFTER_HIT;
+                   const maxHX = Math.abs(b.vy) * 0.6;
+          b.vx = Math.max(-maxHX, Math.min(maxHX, b.vx));
+          // do not zero tiny vx; allow slide-off behavior
+          if (Math.abs(b.vy) < MIN_VY_AFTER_HIT) b.vy = Math.sign(b.vy) * MIN_VY_AFTER_HIT;
 
          // Collide with trapezoid walls (lines)
          collideWalls(b);
