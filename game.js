@@ -3,11 +3,10 @@
 
   // Constants
   const GRAVITY_BASE = 1.0; // vertical only
-  const RESTITUTION_BASE = 0.08; // gentle bounces
+  const RESTITUTION_BASE = 0.10; // gentle bounces
   const TANGENTIAL_BASE = 1.0; // preserve slide
-  const WALL_REST = 0.02;
-  const AIR_DRAG = 0.01; // light damping
-  const JITTER = 0.0; // no random kicks
+  const WALL_REST = 0.03; // low restitution on walls/static
+  const AIR_DRAG = 0.012; // light damping  const JITTER = 0.0; // no random kicks
   const MAX_VX = 2.0; // further limited per vy each tick
   const SPAWN_HEIGHT = 60;
   const INITIAL_VY = 1.0;
@@ -588,10 +587,10 @@
     const xCenter = (trapezoid.leftTop + trapezoid.rightTop) / 2;
     const color = state.ballColor;
     const sign = ((state._dropId = (state._dropId || 0) + 1) % 2 === 0) ? 1 : -1;
-    const rand = (state._dropId * 9301 + 49297) % 233280 / 233280; // deterministic seed
-    const jx = (rand * 2 - 1) * 0.25; // tiny horizontal jitter
+    const rand = Math.random();
+    const jx = (rand * 2 - 1) * 0.08; // tiny horizontal jitter per spec
     const base = {
-      x: xCenter + sign * 0.5, // micro-offset to avoid perfect apex landings
+      x: xCenter + sign * 0.5,
       y: SPAWN_HEIGHT,
       vx: jx,
       vy: INITIAL_VY,
@@ -710,45 +709,15 @@
             b.x += nx * overlap;
             b.y += ny * overlap;
 
-            // Let engine handle collision; only minimal horizontal bias to break symmetry
-            if (ny < -0.9 && b.vy > 0 && Math.abs(b.vx) < 0.02) {
+            // Minimal horizontal bias to break perfect top-center symmetry (no vy change)
+            if (b.vy > 0 && Math.abs(b.vx) < 0.02) {
               const sign = (b.id % 2 === 0) ? 1 : -1;
-              b.vx += sign * 0.08; // horizontal only, tiny
-            }
-
-            // Contact tracking for per-tick guard
-            if (b.contact.pegId === i) {
-              b.contact.sinceMs += 16; // approx per substep
-            } else {
-              b.contact.pegId = i;
-              b.contact.sinceMs = 0;
+              b.vx += sign * 0.06;
             }
           }
         }
 
-        // Per-tick guard: if stuck on peg >120ms with tiny vx, nudge horizontally only
-        if (b.contact.pegId != null && b.contact.sinceMs > 120) {
-          const p = pegs[b.contact.pegId];
-          if (p && p.r > 0 && Math.abs(b.vx) < 0.02) {
-            const dx = b.x - p.x;
-            const dy = b.y - p.y;
-            const d = Math.hypot(dx, dy) || 1;
-            const nx = dx / d;
-            const ny = dy / d;
-            const tx = -ny;
-            const nudge = 0.02 * Math.abs(b.vy);
-            b.vx += nudge * tx; // horizontal only
-          }
-          b.contact.sinceMs = 0;
-        }
-
-                 // Clamp relation between horizontal and vertical velocity to avoid ping-pong, but allow natural deflection
-                   const maxHX = Math.abs(b.vy) * 0.6;
-          b.vx = Math.max(-maxHX, Math.min(maxHX, b.vx));
-          // do not zero tiny vx; allow slide-off behavior
-          if (Math.abs(b.vy) < MIN_VY_AFTER_HIT) b.vy = Math.sign(b.vy) * MIN_VY_AFTER_HIT;
-
-         // Collide with trapezoid walls (lines)
+                 // Collide with trapezoid walls (lines)
          collideWalls(b);
 }
 
