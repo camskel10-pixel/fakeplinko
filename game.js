@@ -293,10 +293,10 @@
     let topCount;
     let bottomCount;
     if ((state.shape || 'triangle') === 'triangle') {
-      const TOP_COUNT = 3; // flat top of 3
-      topCount = TOP_COUNT;
-      bottomCount = TOP_COUNT + (rows - 1); // 3,4,5,... => bottom = rows+2
-    } else {
+          const TOP_COUNT = 3; // flat top of 3
+    topCount = TOP_COUNT;
+    bottomCount = TOP_COUNT + (rows - 1);
+} else {
       // square/circle use a constant width across matching slots = rows + 1
       const cols = rows + 1;
       topCount = cols;
@@ -338,9 +338,13 @@
   }
 
   function effectiveRows() {
-    // Effective row count equals the number of rows of peg gaps (aka balls steps)
-    // For classic plinko, slots = rows + 1, so effRows = rows
-    return state.rows;
+    const shape = state.shape || 'triangle';
+    if (shape === 'triangle') {
+      // With top=3, bottom pegs = rows + 2, slots = bottom + 1 = rows + 3
+      return state.rows + 2;
+    }
+    // Square/Circle: constant width => slots = rows + 2 => effRows = rows + 1
+    return state.rows + 1;
   }
 
   function computePegs() {
@@ -549,26 +553,11 @@
     for (let i = 0; i < slots.length; i++) {
       const s = slots[i];
       const cx = s.cx;
-      const cy = trapezoid.bottom - 28;
-      const w = gap - 8;
-      const h = 26;
-      const x = cx - w / 2;
-      const y = cy - h / 2;
-
+      const cy = trapezoid.bottom - 24;
+      // colored text only, no boxes
       const color = colorForMultiplier(s.mult, min, max);
-
-      // rounded chip with vivid fill
-      const r = 8;
-      roundRect(ctx, x, y, w, h, r);
       ctx.fillStyle = color;
-      ctx.fill();
-      ctx.strokeStyle = '#091123';
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-
-      // label
-      ctx.fillStyle = '#0b1020';
-      ctx.font = 'bold 12px system-ui';
+      ctx.font = 'bold 13px system-ui';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(`${s.mult}x`, cx, cy);
