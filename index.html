@@ -1,47 +1,99 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>Plinko — Responsive Vertical Fit (PC + Mobile)</title>
-<style>
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0;background:#0b1220;color:#e9eef9}
-  body{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Pluto Plinko</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:#04030f;color:#f2f4ff}
+    body{font-family:'Space Grotesk',ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;letter-spacing:.02em;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;overflow:hidden}
 
-  /* Canvas fills view; board rendered with internal scale so it fits vertically */
-  #stage{display:block;width:100%;height:100dvh;touch-action:manipulation;background:radial-gradient(1200px 800px at 50% 15%, rgba(130,170,255,.10), rgba(0,0,0,0))}
+    :root{
+      --panelW: clamp(220px, 24vw, 320px);
+      --panelW-compact: clamp(180px, 32vw, 240px);
+      --panelBg: linear-gradient(180deg,rgba(19,27,53,.88),rgba(12,18,37,.94));
+      --border: rgba(90,120,190,.35);
+      --muted: #9fb7ff;
+      --accent: #77a9ff;
+      --accent-strong: #8f7eff;
+      --chipBase: rgba(27,39,74,.9);
+      --chipHover: rgba(41,58,102,.98);
+      --btnTop: #1f2f56;
+      --btnBot: #14203b;
+      --btnEdge: rgba(102,144,220,.5);
+      --greenTop: #2dfba1;
+      --greenBot: #12b86c;
+      --redTop: #ff5579;
+      --redBot: #c82446;
+      --glow: rgba(118,180,255,.55);
+    }
 
-  :root{
-    --sideW: clamp(200px, 26vw, 300px);
-    --sideW-compact: clamp(150px, 34vw, 200px);
-    --cardTop:#233045; --cardBot:#1b273b; --edge:#2a3a54; --muted:#9fb3d8; --accent:#8cb6ff;
-    --btnTop:#1f2d46; --btnBot:#11213a; --btnEdge:#3a5176; --greenTop:#2af07a; --greenBot:#17b856;
-    --chipRed:#ef2b43; --chipOrange:#ff6b2e; --chipAmber:#ff9c2e; --chipYellow:#ffc43c; --chipPale:#ffd95a;
-  }
-  .side{position:fixed;top:0;bottom:0;width:var(--sideW);padding:12px;display:flex;flex-direction:column;gap:12px;z-index:3;overflow-y:auto;overscroll-behavior:contain;padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:calc(12px + env(safe-area-inset-bottom))}
-  #left{left:0;background:linear-gradient(180deg,#1f2b43,#182439);border-right:1px solid var(--edge);box-shadow:8px 0 24px rgba(0,0,0,.35)}
-  #right{right:0;background:linear-gradient(180deg,#1c263c,#152136);border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35)}
-  .card{border:1px solid var(--edge);border-radius:14px;padding:10px;background:linear-gradient(180deg,var(--cardTop),var(--cardBot));box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.25)}
-  .title{font-weight:800;letter-spacing:.2px;color:var(--muted);margin:2px 2px 8px}
-  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .seg{display:flex;border:1px solid var(--btnEdge);border-radius:12px;overflow:hidden}
-  .seg>button{border:0;min-width:40px;height:36px;padding:0 12px;color:#e9eef9;background:linear-gradient(180deg,var(--btnTop),var(--btnBot));cursor:pointer}
-  .seg>button.active{background:linear-gradient(180deg,#274165,#193052)}
-  input[type=number], select{height:36px;padding:6px 10px;border-radius:10px;border:1px solid var(--btnEdge);background:linear-gradient(180deg,#13213a,#0f1a2f);color:#e9eef9;min-width:74px;font-weight:700}
-  input[type=range]{flex:1}
-  .btn{height:42px;border-radius:12px;border:1px solid rgba(0,0,0,.25);font-weight:900;letter-spacing:.2px;cursor:pointer}
-  .btn.green{color:#062312;background:linear-gradient(180deg,var(--greenTop),var(--greenBot));box-shadow:0 10px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.35)}
-  .btn.dark{color:#e9eef9;background:linear-gradient(180deg,#192b48,#0f1a30);border-color:var(--btnEdge)}
-  .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
-  .stat{font-weight:800;letter-spacing:.2px;text-align:center}
+    #stage{display:block;width:100%;height:100dvh;touch-action:manipulation;background:radial-gradient(1200px 800px at 50% 10%,rgba(81,131,255,.16),rgba(0,0,0,0));}
 
-  /* Compact on narrow screens */
-  @media (max-width: 900px){ :root{ --sideW: var(--sideW-compact); } .title{font-size:13px} .seg>button{min-width:34px;height:32px;padding:0 8px;font-size:12px} input[type=number], select{height:32px;font-size:12px} .btn{height:36px;font-size:13px} }
-</style>
+    .side{position:fixed;top:0;bottom:0;width:var(--panelW);padding:16px;display:flex;flex-direction:column;gap:14px;z-index:5;overflow-y:auto;overscroll-behavior:contain;background:var(--panelBg);backdrop-filter:blur(26px);border:1px solid rgba(255,255,255,.04);}
+    #left{left:0;border-right:1px solid var(--border);box-shadow:22px 0 45px rgba(0,0,0,.48);padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(22px + env(safe-area-inset-bottom));}
+    #right{right:0;border-left:1px solid var(--border);box-shadow:-22px 0 45px rgba(0,0,0,.48);padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(22px + env(safe-area-inset-bottom));}
+
+    .card{border:1px solid rgba(122,156,240,.18);border-radius:18px;padding:16px;background:linear-gradient(180deg,rgba(21,30,57,.96),rgba(13,19,37,.92));box-shadow:0 14px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);display:flex;flex-direction:column;gap:12px}
+    .title{font-weight:700;text-transform:uppercase;font-size:13px;letter-spacing:.26em;color:rgba(173,199,255,.85);}
+    .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+    .seg{display:inline-flex;border:1px solid rgba(122,156,240,.35);border-radius:14px;overflow:hidden;background:rgba(15,22,43,.6)}
+    .seg>button{border:0;min-width:72px;height:40px;padding:0 16px;color:#f2f4ff;background:transparent;font-weight:700;cursor:pointer;transition:all .2s ease}
+    .seg>button.active{background:linear-gradient(180deg,rgba(123,153,255,.35),rgba(88,116,220,.35));box-shadow:inset 0 0 0 1px rgba(149,178,255,.45);}
+
+    input[type=number], select{height:44px;padding:10px 12px;border-radius:14px;border:1px solid var(--btnEdge);background:linear-gradient(180deg,#131d38,#0a1224);color:#f2f4ff;min-width:86px;font-weight:700;font-size:15px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+    input[type=number]:focus, select:focus{outline:none;border-color:rgba(144,188,255,.8);box-shadow:0 0 0 2px rgba(120,164,255,.2);}
+
+    input[type=range]{flex:1;accent-color:#7aa2ff;}
+
+    .btn{height:46px;border-radius:14px;border:1px solid rgba(0,0,0,.25);font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:0 20px;cursor:pointer;transition:transform .18s ease, box-shadow .18s ease;background:linear-gradient(180deg,var(--btnTop),var(--btnBot));color:#f2f4ff;}
+    .btn.green{background:linear-gradient(180deg,var(--greenTop),var(--greenBot));color:#051f12;box-shadow:0 18px 34px rgba(34,225,147,.36), inset 0 1px 0 rgba(255,255,255,.45);border:0;}
+    .btn.stop{background:linear-gradient(180deg,var(--redTop),var(--redBot));color:#fffbff;box-shadow:0 16px 32px rgba(255,60,110,.42);}
+    .btn.dark{background:linear-gradient(180deg,#1b274a,#121a30);border:1px solid rgba(102,136,210,.5);}
+    .btn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none;transform:none}
+    .btn:not(:disabled):active{transform:translateY(1px);}
+    .btn.full{width:100%;}
+
+    .chips{gap:8px;}
+    .chip{border-radius:12px;border:1px solid rgba(124,156,238,.35);background:var(--chipBase);color:#d6e4ff;min-width:54px;height:40px;font-weight:700;font-size:14px;cursor:pointer;transition:background .18s ease, transform .18s ease;}
+    .chip:hover{background:var(--chipHover);}
+    .chip:active{transform:translateY(1px);}
+
+    .stat{align-items:center;text-align:center;gap:10px;}
+    .stat span.value{font-size:28px;font-weight:700;letter-spacing:.08em;color:#f5f7ff;}
+    .stat .label{font-size:13px;letter-spacing:.24em;color:rgba(173,199,255,.7);text-transform:uppercase;}
+
+    .hint{font-size:12px;color:rgba(157,184,255,.6);line-height:1.4;}
+
+    .field{display:flex;flex-direction:column;gap:6px;font-size:13px;color:rgba(196,214,255,.8);}
+    .range{display:flex;align-items:center;gap:10px;}
+    .range span{font-weight:700;color:#b9caff;min-width:52px;text-align:right;}
+
+    ul.power{margin:0;padding-left:18px;line-height:1.55;font-size:14px;color:rgba(170,194,255,.78);}
+
+    @media (max-width:1100px){
+      :root{--panelW:var(--panelW-compact);}
+      .seg>button{min-width:64px;height:36px;font-size:13px;}
+      input[type=number],select{height:40px;font-size:14px;}
+      .btn{height:42px;font-size:13px;}
+      .chip{min-width:48px;height:36px;font-size:13px;}
+    }
+
+    @media (max-width:860px){
+      body{overflow:auto;}
+      #left,#right{position:relative;width:auto;box-shadow:none;border:none;padding:14px;}
+      #left{padding-bottom:0;}
+      #right{padding-top:0;}
+      #stage{height:70vh;}
+    }
+  </style>
 </head>
 <body>
-  <!-- Left controls (selectors on the side) -->
   <aside id="left" class="side" aria-label="Controls">
     <div class="card">
       <div class="title">Mode</div>
@@ -49,14 +101,37 @@
         <button id="manualBtn" class="active" role="tab" aria-selected="true">Manual</button>
         <button id="autoBtn" role="tab" aria-selected="false">Auto</button>
       </div>
+      <div class="hint">Auto play drops a ball on a timer. Set balls to 0 for endless rolls.</div>
     </div>
     <div class="card">
-      <div class="title">Bet</div>
-      <div class="row">
-        <button id="betHalf" class="btn dark" style="height:36px">½</button>
-        <input id="bet" type="number" min="0.1" step="0.1" value="1.0" inputmode="decimal"/>
-        <button id="betDouble" class="btn dark" style="height:36px">2×</button>
+      <div class="title">Bet Amount</div>
+      <div class="row chips">
+        <button class="chip" data-bet="1">$1</button>
+        <button class="chip" data-bet="5">$5</button>
+        <button class="chip" data-bet="10">$10</button>
+        <button class="chip" data-bet="25">$25</button>
+        <button class="chip" data-bet="50">$50</button>
       </div>
+      <div class="row">
+        <button id="betHalf" class="btn dark" type="button">½</button>
+        <input id="bet" type="number" min="0.10" step="0.10" value="1.00" inputmode="decimal" aria-label="Bet size" />
+        <button id="betDouble" class="btn dark" type="button">2×</button>
+        <button id="betReset" class="btn dark" type="button">Reset</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="title">Auto Play</div>
+      <label class="field" for="autoCount">
+        <span>Balls</span>
+        <input id="autoCount" type="number" min="0" value="25" />
+      </label>
+      <label class="field" for="autoDelay">
+        <span>Delay</span>
+        <div class="range">
+          <input id="autoDelay" type="range" min="150" max="1200" step="10" value="420" />
+          <span id="autoDelayLabel">0.42s</span>
+        </div>
+      </label>
     </div>
     <div class="card">
       <div class="title">Risk</div>
@@ -67,258 +142,609 @@
       </select>
     </div>
     <div class="card">
-      <div class="title">Rows <span id="rowsLabel" style="float:right;color:#cfe0ff"></span></div>
-      <div class="row"><input id="rows" type="range" min="8" max="16" value="12"/></div>
+      <div class="title">Rows <span id="rowsLabel"></span></div>
+      <input id="rows" type="range" min="8" max="16" value="12" />
     </div>
-    <button id="dropBtn" class="btn green">Drop Ball</button>
+    <button id="dropBtn" class="btn green" type="button">Drop Ball</button>
   </aside>
 
-  <!-- Right info (stats + power-ups legend) -->
-  <aside id="right" class="side" aria-label="Stats and Power-ups">
-    <div class="card stat">Balance<br><span id="balance" style="font-size:20px">$1000.00</span></div>
-    <div class="card stat">Streak<br><span id="streak" style="font-size:20px">x1</span></div>
+  <aside id="right" class="side" aria-label="Stats">
+    <div class="card stat">
+      <span class="label">Balance</span>
+      <span id="balance" class="value">$1000.00</span>
+      <button id="resetBalance" class="btn dark full" type="button">Reset to $1000</button>
+    </div>
+    <div class="card stat">
+      <span class="label">Streak</span>
+      <span id="streak" class="value">x1</span>
+    </div>
     <div class="card">
-      <div class="title">Power-ups</div>
-      <ul style="margin:0;padding-left:18px;line-height:1.4;font-size:14px;color:var(--muted)">
-        <li><span style="color:rgba(255,80,80,0.9)">Magnet Pull</span> – Attracts ball to best slot.</li>
-        <li><span style="color:rgba(80,160,255,0.9)">Wind Gust</span> – Pushes ball sideways mid‑fall.</li>
-        <li><span style="color:rgba(180,80,255,0.9)">Slow Motion</span> – Temporarily slows the ball.</li>
-        <li><span style="color:rgba(255,217,77,0.9)">Bumper Peg</span> – Stronger peg bounce.</li>
-        <li>Multi‑ball – Splits into 3 balls mid‑fall.</li>
-        <li>Exploding Peg – Removes a random peg during the drop.</li>
+      <div class="title">Multipliers</div>
+      <p style="margin:0;font-size:14px;color:rgba(175,198,255,.72);line-height:1.6">Edge slots pay the highest multipliers while the center is the safest hit. Adjust risk to lean into huge Pluto-style jackpots or steadier runs.</p>
+      <ul class="power">
+        <li>Outside slots can reach up to 1000× on high risk.</li>
+        <li>Middle slots bottom out at 0.5× for tense slow burns.</li>
+        <li>Play around with rows for a taller or tighter pyramid.</li>
       </ul>
     </div>
   </aside>
 
-  <canvas id="stage" aria-label="Plinko board (tap near the top to drop)"></canvas>
+  <canvas id="stage" aria-label="Plinko board"></canvas>
 
-<script>
-(function(){
-  const canvas = document.getElementById('stage');
-  const ctx = canvas.getContext('2d');
-  const L = document.getElementById('left');
-  const R = document.getElementById('right');
+  <script>
+    (function(){
+      const canvas = document.getElementById('stage');
+      const ctx = canvas.getContext('2d');
+      const L = document.getElementById('left');
+      const R = document.getElementById('right');
 
-  // UI refs
-  const manualBtn = document.getElementById('manualBtn');
-  const autoBtn   = document.getElementById('autoBtn');
-  const betEl     = document.getElementById('bet');
-  const betHalf   = document.getElementById('betHalf');
-  const betDouble = document.getElementById('betDouble');
-  const riskEl    = document.getElementById('risk');
-  const rowsEl    = document.getElementById('rows');
-  const rowsLabel = document.getElementById('rowsLabel');
-  const dropBtn   = document.getElementById('dropBtn');
-  const balanceEl = document.getElementById('balance');
-  const streakEl  = document.getElementById('streak');
+      const manualBtn = document.getElementById('manualBtn');
+      const autoBtn   = document.getElementById('autoBtn');
+      const dropBtn   = document.getElementById('dropBtn');
+      const betEl     = document.getElementById('bet');
+      const betHalf   = document.getElementById('betHalf');
+      const betDouble = document.getElementById('betDouble');
+      const betReset  = document.getElementById('betReset');
+      const chips     = Array.from(document.querySelectorAll('.chip'));
+      const riskEl    = document.getElementById('risk');
+      const rowsEl    = document.getElementById('rows');
+      const rowsLabel = document.getElementById('rowsLabel');
+      const balanceEl = document.getElementById('balance');
+      const streakEl  = document.getElementById('streak');
+      const resetBalanceBtn = document.getElementById('resetBalance');
+      const autoCountEl = document.getElementById('autoCount');
+      const autoDelayEl = document.getElementById('autoDelay');
+      const autoDelayLabel = document.getElementById('autoDelayLabel');
 
-  // DPR and size
-  let DPR = Math.max(1, Math.min(2, window.devicePixelRatio||1));
-  let W=0, H=0; const TAU = Math.PI*2;
+      const TAU = Math.PI * 2;
+      let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      let W=0, H=0;
 
-  // Geometry & physics
-  const TOP_START_COUNT = 3; // flat top: first row has 3 pegs
-  let rows = parseInt(rowsEl.value,10);
-  let pegs=[], slots=[], balls=[];
-  let leftPad=0, rightPad=0; // space for sidebars
-  let topOffset = 68; // px
-  let pegSpacingX=30, pegSpacingY=34, pegRadius=5;
+      const TOP_START_COUNT = 1;
+      let rows = parseInt(rowsEl.value,10);
+      let pegs=[], slots=[], balls=[];
+      let leftPad=0, rightPad=0;
+      let topOffset=72;
+      let pegSpacingX=34, pegSpacingY=42, pegRadius=5;
 
-  // Trapezoid frame points
-  let topLeft={x:0,y:0}, topRight={x:0,y:0}, baseLeft={x:0,y:0}, baseRight={x:0,y:0};
-  let nLeft={x:0,y:0}, nRight={x:0,y:0}; // inward normals for side walls
+      let topLeft={x:0,y:0}, topRight={x:0,y:0}, baseLeft={x:0,y:0}, baseRight={x:0,y:0};
+      let nLeft={x:0,y:0}, nRight={x:0,y:0};
 
-  // Anti-stick physics
-  const GRAVITY=0.31; const RESTITUTION=0.50; const TANGENTIAL=0.88; const WALL_REST=0.40; const AIR_DRAG=0.010; const JITTER=0.10; const MAX_VX=1.6; const SPAWN_HEIGHT=60; const INITIAL_VY=0.65; const MIN_VY_AFTER_HIT=0.12;
+      const GRAVITY=0.28;
+      const RESTITUTION=0.76;
+      const TANGENTIAL=0.88;
+      const WALL_REST=0.55;
+      const AIR_DRAG=0.008;
+      const JITTER=0.15;
+      const MAX_VX=1.9;
+      const SPAWN_HEIGHT=78;
+      const INITIAL_VY=0.35;
+      const MIN_VY_AFTER_HIT=0.18;
+      const MAX_BALLS=12;
 
-  // State
-  let auto=false, lastDrop=0, dropInterval=260; // slightly slower on mobile
-  let balance=1000, streak=1;
+      let autoMode=false;
+      let autoRunning=false;
+      let autoDelay=parseInt(autoDelayEl.value,10)||420;
+      let autoRemaining=0;
+      let autoInfinite=true;
+      let lastDrop=0;
 
-  // RNG
-  let rng = mulberry32(Date.now()>>>0);
+      let balance=1000;
+      let streak=1;
 
-  // Board scale/translation to fit vertically
-  let boardScale=1, tx=0, ty=0, boardHeightEst=0, availW=0;
+      let rng = mulberry32(Date.now()>>>0);
 
-  // ===== Size & layout =====
-  function size(){
-    const cssW = window.innerWidth; const cssH = window.innerHeight;
-    canvas.style.width = cssW+'px'; canvas.style.height = cssH+'px';
-    canvas.width = Math.floor(cssW*DPR); canvas.height = Math.floor(cssH*DPR);
-    // set base transform; we override per-frame with scaling
-    ctx.setTransform(DPR,0,0,DPR,0,0);
-    W = cssW; H = cssH;
+      let boardScale=1, tx=0, ty=0, boardHeightEst=0, availW=0;
 
-    // gutters from actual side widths; allow panels to overlap internally, not board
-    const leftW  = Math.ceil(L.getBoundingClientRect().width);
-    const rightW = Math.ceil(R.getBoundingClientRect().width);
-    leftPad  = leftW + 10; rightPad = rightW + 10;
+      function size(){
+        const cssW = window.innerWidth;
+        const cssH = window.innerHeight;
+        canvas.style.width = cssW+'px';
+        canvas.style.height = cssH+'px';
+        canvas.width = Math.floor(cssW * DPR);
+        canvas.height = Math.floor(cssH * DPR);
+        ctx.setTransform(DPR,0,0,DPR,0,0);
+        W = cssW; H = cssH;
 
-    buildBoard();
-    computeBoardScale();
-  }
-  addEventListener('resize', size, {passive:true});
-  addEventListener('orientationchange', ()=> setTimeout(size, 100));
+        const leftW  = Math.ceil(L.getBoundingClientRect().width);
+        const rightW = Math.ceil(R.getBoundingClientRect().width);
+        leftPad = leftW + 16;
+        rightPad = rightW + 16;
 
-  // ===== Build board with flat 3-peg top =====
-  function inwardNormal(ax,ay,bx,by){ let nx=-(by-ay), ny=(bx-ax); const len=Math.hypot(nx,ny)||1; nx/=len; ny/=len; const cx=(ax+bx)/2, cy=(ay+by)/2; const toC = (W/2-cx)*nx + (H/2-cy)*ny; if(toC<0){ nx=-nx; ny=-ny; } return {x:nx,y:ny}; }
+        buildBoard();
+        computeBoardScale();
+        draw();
+      }
+      addEventListener('resize', size, {passive:true});
+      addEventListener('orientationchange', ()=> setTimeout(size,100));
 
-  function buildBoard(){
-    rows = parseInt(rowsEl.value,10); rowsLabel.textContent = rows;
-    pegs.length=0; slots.length=0;
+      function inwardNormal(ax,ay,bx,by){
+        let nx = -(by-ay), ny = (bx-ax);
+        const len = Math.hypot(nx,ny)||1;
+        nx/=len; ny/=len;
+        const cx=(ax+bx)/2, cy=(ay+by)/2;
+        const toC = (W/2 - cx)*nx + (H/2 - cy)*ny;
+        if(toC<0){ nx=-nx; ny=-ny; }
+        return {x:nx, y:ny};
+      }
 
-    availW = Math.max(220, W - leftPad - rightPad);
-    pegSpacingY = Math.min(44, Math.max(24, Math.floor((H-220)/rows)));
-    pegSpacingX = Math.min(48, Math.max(22, Math.floor(availW/(TOP_START_COUNT + rows))));
-    pegRadius   = Math.max(4, Math.min(6, Math.floor(Math.min(pegSpacingX,pegSpacingY)*0.22)));
-    topOffset   = Math.max(54, Math.min(110, Math.floor(H*0.10)));
+      function buildBoard(){
+        rows = parseInt(rowsEl.value,10);
+        rowsLabel.textContent = rows + ' rows';
+        pegs.length = 0;
+        slots.length = 0;
 
-    const firstCount = TOP_START_COUNT;
-    const lastCount  = TOP_START_COUNT + rows - 1;
-    const baseY = topOffset + (rows-1)*pegSpacingY + 36;
+        availW = Math.max(240, W - leftPad - rightPad);
+        pegSpacingY = Math.min(52, Math.max(26, Math.floor((H-260)/rows)));
+        pegSpacingX = Math.min(60, Math.max(26, Math.floor(availW/(rows + 1.5))));
+        pegRadius = Math.max(4, Math.min(6, Math.floor(Math.min(pegSpacingX, pegSpacingY)*0.22)));
+        topOffset = Math.max(54, Math.min(120, Math.floor(H*0.12)));
 
-    const firstRowWidth = (firstCount-1)*pegSpacingX;
-    const centerX = leftPad + availW/2;
-    topLeft  = {x: centerX - firstRowWidth/2 - 12, y: topOffset};
-    topRight = {x: centerX + firstRowWidth/2 + 12, y: topOffset};
+        const firstCount = TOP_START_COUNT;
+        const lastCount = firstCount + rows - 1;
+        const baseY = topOffset + (rows-1)*pegSpacingY + 42;
+        const firstRowWidth = (firstCount-1)*pegSpacingX;
+        const centerX = leftPad + availW/2;
+        topLeft = {x: centerX - firstRowWidth/2 - 18, y: topOffset};
+        topRight = {x: centerX + firstRowWidth/2 + 18, y: topOffset};
+        const lastRowWidth = (lastCount-1)*pegSpacingX;
+        baseLeft = {x: centerX - lastRowWidth/2 - 24, y: baseY};
+        baseRight = {x: centerX + lastRowWidth/2 + 24, y: baseY};
 
-    const lastRowWidth = (lastCount-1)*pegSpacingX;
-    baseLeft  = {x: centerX - lastRowWidth/2 - 16, y: baseY};
-    baseRight = {x: centerX + lastRowWidth/2 + 16, y: baseY};
+        nLeft = inwardNormal(topLeft.x, topLeft.y, baseLeft.x, baseLeft.y);
+        nRight = inwardNormal(topRight.x, topRight.y, baseRight.x, baseRight.y);
 
-    nLeft  = inwardNormal(topLeft.x, topLeft.y, baseLeft.x, baseLeft.y);
-    nRight = inwardNormal(topRight.x, topRight.y, baseRight.x, baseRight.y);
+        for(let r=0;r<rows;r++){
+          const count = firstCount + r;
+          const y = topOffset + r*pegSpacingY;
+          const rowWidth = (count-1)*pegSpacingX;
+          const startX = centerX - rowWidth/2;
+          for(let c=0;c<count;c++) pegs.push({x:startX + c*pegSpacingX, y, r:pegRadius});
+        }
 
-    // pegs: 3,4,5,...
-    for(let r=0;r<rows;r++){
-      const count = firstCount + r; const y = topOffset + r*pegSpacingY;
-      const rowWidth=(count-1)*pegSpacingX; const startX=centerX - rowWidth/2;
-      for(let c=0;c<count;c++) pegs.push({x:startX + c*pegSpacingX, y, r:pegRadius});
-    }
+        const nSlots = lastCount + 1;
+        const slotW = pegSpacingX;
+        const startX = centerX - (nSlots-1)*slotW/2;
+        for(let i=0;i<nSlots;i++) slots.push({x:startX + i*slotW, y:baseY, w:slotW, mult:1});
+        updateMultipliers();
 
-    // slots
-    const nSlots=lastCount+1; const slotW=pegSpacingX; const startX = centerX - (nSlots-1)*slotW/2;
-    for(let i=0;i<nSlots;i++) slots.push({x:startX + i*slotW, y: baseY, w: slotW, mult:1});
-    updateMultipliers();
+        boardHeightEst = baseY + 76;
+      }
 
-    // estimate board height for scaling (base + slot labels area)
-    boardHeightEst = baseY + 64; // add some room for slot chips
-  }
+      function computeBoardScale(){
+        const maxH = H - 24;
+        boardScale = Math.min(1, maxH / boardHeightEst);
+        const scaledBoardW = (W - leftPad - rightPad) * boardScale;
+        tx = leftPad + ((W - leftPad - rightPad) - scaledBoardW)/2 - leftPad*(boardScale-1);
+        ty = Math.max(12, (H - boardHeightEst*boardScale)/2);
+      }
 
-  function computeBoardScale(){
-    // Fit vertically with a small margin; keep aspect uniform
-    const maxH = H - 16; // padding
-    boardScale = Math.min(1, maxH / boardHeightEst);
-    // Center within the free board strip between side panels
-    const scaledBoardW = (W - leftPad - rightPad) * boardScale;
-    tx = leftPad + ((W - leftPad - rightPad) - scaledBoardW)/2 - leftPad*(boardScale-1);
-    ty = Math.max(8, (H - boardHeightEst*boardScale)/2);
-  }
+      const riskParams = {
+        low:    {edge:75,   curve:2.4},
+        medium: {edge:250,  curve:1.8},
+        high:   {edge:1000, curve:1.35}
+      };
+      const minMult = 0.5;
 
-  // ===== Multipliers sized to slots =====
-  const factCache={}; function fact(n){ if(factCache[n]) return factCache[n]; let r=1; for(let i=2;i<=n;i++) r*=i; return factCache[n]=r; }
-  const comb=(n,k)=> fact(n)/(fact(k)*fact(n-k));
-  function binom(n,k,p){ return comb(n,k)*Math.pow(p,k)*Math.pow(1-p,n-k); }
-  function buildMultipliers(effectiveRows, risk){
-    const nSlots=effectiveRows+1; const nRows=effectiveRows; const probs=[]; for(let k=0;k<nSlots;k++) probs.push(binom(nRows,k,0.5));
-    let edgeBoost, centerPenalty; if(risk==='high'){edgeBoost=4.2;centerPenalty=0.52;} else if(risk==='low'){edgeBoost=2.1;centerPenalty=0.86;} else {edgeBoost=3.0;centerPenalty=0.70;}
-    const mid=(nSlots-1)/2, raw=[]; for(let k=0;k<nSlots;k++){ const d=Math.abs(k-mid)/mid; const shape=1+d*(edgeBoost-1); const centerAdj=1-(1-centerPenalty)*(1-d); raw.push(shape*centerAdj); }
-    const rtp=0.98; let expected=0; for(let i=0;i<nSlots;i++) expected += probs[i]*raw[i]; const scale=rtp/expected;
-    return raw.map(v=>{ const m=Math.max(0.1, Math.round(v*scale*100)/100); if(m>=10) return Math.round(m); if(m>=5) return Math.round(m*2)/2; return Math.round(m*10)/10; });
-  }
-  function updateMultipliers(){
-    const effectiveRows = TOP_START_COUNT + rows - 1;
-    const arr=buildMultipliers(effectiveRows, riskEl.value);
-    for (let i=0;i<slots.length;i++) slots[i].mult=arr[i]||arr[arr.length-1];
-  }
+      function buildMultipliers(effectiveRows, risk){
+        const cfg = riskParams[risk] || riskParams.medium;
+        const slotCount = effectiveRows + 1;
+        const centre = (slotCount-1)/2;
+        const arr=[];
+        for(let i=0;i<slotCount;i++){
+          const d = centre===0 ? 1 : Math.abs(i-centre)/centre;
+          const shaped = Math.pow(d, cfg.curve);
+          const raw = minMult + (cfg.edge - minMult) * shaped;
+          arr.push(roundMultiplier(raw));
+        }
+        return arr;
+      }
 
-  // ===== Physics =====
-  function collideEdge(ball, A, n){
-    const d=(ball.x-A.x)*n.x + (ball.y-A.y)*n.y; const pen=ball.r - d; if(pen>0){
-      ball.x += n.x*pen; ball.y += n.y*pen;
-      const vdot = ball.vx*n.x + ball.vy*n.y; // normal
-      const tx=-n.y, ty=n.x; const vtan = ball.vx*tx + ball.vy*ty; // tangent
-      const vn = -WALL_REST*vdot; const vt = vtan*TANGENTIAL;
-      ball.vx = tx*vt + (ball.vx - vdot*n.x) + vn*n.x;
-      ball.vy = ty*vt + (ball.vy - vdot*n.y) + vn*n.y;
-      if(ball.vy < MIN_VY_AFTER_HIT) ball.vy = MIN_VY_AFTER_HIT;
-    }
-  }
+      function roundMultiplier(v){
+        if(v>=1000) return Math.round(v);
+        if(v>=100) return Math.round(v);
+        if(v>=10) return Math.round(v*10)/10;
+        return Math.round(v*100)/100;
+      }
 
-  class Ball{
-    constructor(x,y){ this.x=x; this.y=y; this.r=Math.max(4,pegRadius); this.vx=(rng()-0.5)*0.8; this.vy=INITIAL_VY; this.done=false; this.trail=[]; }
-    step(){ if(this.done) return;
-      this.vy += GRAVITY; this.vx *= (1-AIR_DRAG); this.vy *= (1-AIR_DRAG*0.5);
-      this.x += this.vx; this.y += this.vy;
-      // collide with trapezoid sides
-      collideEdge(this, topLeft,  nLeft);
-      collideEdge(this, topRight, nRight);
-      // peg collisions
-      for(const p of pegs){ const dx=this.x-p.x, dy=this.y-p.y; const dist=Math.hypot(dx,dy), minD=this.r+p.r; if(dist<minD){ const nx=dx/(dist||1), ny=dy/(dist||1); const overlap=minD-dist+0.004; this.x+=nx*overlap; this.y+=ny*overlap; const vdot=this.vx*nx + this.vy*ny; if(vdot<0){ this.vx -= (1+RESTITUTION)*vdot*nx; this.vy -= (1+RESTITUTION)*vdot*ny; } const tx=-ny, ty=nx; const vtan=this.vx*tx + this.vy*ty; const vnorm=this.vx*nx + this.vy*ny; const vtanD=vtan*TANGENTIAL; this.vx = tx*vtanD + nx*vnorm; this.vy = ty*vtanD + ny*vnorm; this.vx += (rng()-0.5)*JITTER; if(this.vy < MIN_VY_AFTER_HIT) this.vy = MIN_VY_AFTER_HIT; if(Math.abs(this.vx)>MAX_VX) this.vx=Math.sign(this.vx)*MAX_VX; } }
-      const floorY = baseLeft.y + 2; if(this.y>floorY) this.land();
-    }
-    land(){ this.done=true; let idx=0,md=1e9; for(let i=0;i<slots.length;i++){ const d=Math.abs(this.x - slots[i].x); if(d<md){ md=d; idx=i; } } const mult=slots[idx].mult; const bet=Math.max(0.1, parseFloat(betEl.value||'1')); const win=bet*mult*streak; balance+=win; streak=(mult>=5)?(streak+1):1; renderHUD(); setTimeout(()=>{ const j=balls.indexOf(this); if(j>=0) balls.splice(j,1); }, 120); }
-    draw(){ drawBall(this); }
-  }
+      function updateMultipliers(){
+        const effectiveRows = rows;
+        const arr = buildMultipliers(effectiveRows, riskEl.value);
+        for(let i=0;i<slots.length;i++) slots[i].mult = arr[i] || arr[arr.length-1];
+      }
 
-  // ===== UI actions =====
-  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; updateDropBtn(); }
-  function updateDropBtn(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); dropBtn.disabled = balance < bet; }
-  function drop(){ const bet=Math.max(0.1, parseFloat(betEl.value||'1')); if(balance<bet) return; balance-=bet; renderHUD(); const spread=pegSpacingX*0.30; const centerX=(topLeft.x+topRight.x)/2; const spawnX = centerX + (rng()-0.5)*spread; const spawnY = topLeft.y - SPAWN_HEIGHT; balls.push(new Ball(spawnX,spawnY)); }
+      function collideEdge(ball, A, n){
+        const d = (ball.x-A.x)*n.x + (ball.y-A.y)*n.y;
+        const pen = ball.r - d;
+        if(pen>0){
+          ball.x += n.x*pen;
+          ball.y += n.y*pen;
+          const vdot = ball.vx*n.x + ball.vy*n.y;
+          const tx=-n.y, ty=n.x;
+          const vtan = ball.vx*tx + ball.vy*ty;
+          const vn = -WALL_REST*vdot;
+          const vt = vtan*TANGENTIAL;
+          ball.vx = tx*vt + (ball.vx - vdot*n.x) + vn*n.x;
+          ball.vy = ty*vt + (ball.vy - vdot*n.y) + vn*n.y;
+          if(ball.vy < MIN_VY_AFTER_HIT) ball.vy = MIN_VY_AFTER_HIT;
+        }
+      }
 
-  manualBtn.addEventListener('click',()=>{ auto=false; manualBtn.classList.add('active'); autoBtn.classList.remove('active'); });
-  autoBtn  .addEventListener('click',()=>{ auto=!auto; autoBtn.classList.toggle('active',auto); manualBtn.classList.toggle('active',!auto); });
-  dropBtn  .addEventListener('click', drop);
-  canvas   .addEventListener('pointerdown',(e)=>{ // simple: tap top third of screen to drop
-    if(e.clientY < window.innerHeight*0.35) drop();
-  });
-  betHalf  .addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)/2).toFixed(2); updateDropBtn(); });
-  betDouble.addEventListener('click',()=>{ betEl.value = Math.max(0.1, (+betEl.value||1)*2).toFixed(2); updateDropBtn(); });
-  betEl    .addEventListener('input', updateDropBtn);
-  riskEl   .addEventListener('change',()=>{ updateMultipliers(); draw(); });
-  rowsEl   .addEventListener('input',()=>{ buildBoard(); computeBoardScale(); draw(); });
+      class Ball{
+        constructor(x,y,bet){
+          this.x=x; this.y=y; this.r=Math.max(4, pegRadius);
+          this.vx=(rng()-0.5)*0.9;
+          this.vy=INITIAL_VY;
+          this.bet=bet;
+          this.done=false;
+          this.trail=[];
+        }
+        step(){
+          if(this.done) return;
+          this.vy += GRAVITY;
+          this.vx *= (1-AIR_DRAG);
+          this.vy *= (1-AIR_DRAG*0.5);
+          this.x += this.vx;
+          this.y += this.vy;
+          collideEdge(this, topLeft, nLeft);
+          collideEdge(this, topRight, nRight);
+          for(const p of pegs){
+            const dx=this.x-p.x, dy=this.y-p.y;
+            const dist=Math.hypot(dx,dy), minD=this.r+p.r;
+            if(dist<minD){
+              const nx=dx/(dist||1), ny=dy/(dist||1);
+              const overlap=minD-dist+0.004;
+              this.x+=nx*overlap;
+              this.y+=ny*overlap;
+              const vdot=this.vx*nx + this.vy*ny;
+              if(vdot<0){
+                this.vx -= (1+RESTITUTION)*vdot*nx;
+                this.vy -= (1+RESTITUTION)*vdot*ny;
+              }
+              const tx=-ny, ty=nx;
+              const vtan=this.vx*tx + this.vy*ty;
+              const vnorm=this.vx*nx + this.vy*ny;
+              const vtanD=vtan*TANGENTIAL;
+              this.vx = tx*vtanD + nx*vnorm;
+              this.vy = ty*vtanD + ny*vnorm;
+              this.vx += (rng()-0.5)*JITTER;
+              if(this.vy < MIN_VY_AFTER_HIT) this.vy = MIN_VY_AFTER_HIT;
+              if(Math.abs(this.vx)>MAX_VX) this.vx=Math.sign(this.vx)*MAX_VX;
+            }
+          }
+          const floorY = baseLeft.y + 6;
+          if(this.y>floorY) this.land();
+        }
+        land(){
+          this.done=true;
+          let idx=0,md=1e9;
+          for(let i=0;i<slots.length;i++){
+            const d=Math.abs(this.x - slots[i].x);
+            if(d<md){ md=d; idx=i; }
+          }
+          const mult = slots[idx]?.mult || 0;
+          const win = this.bet * mult * streak;
+          balance += win;
+          streak = (mult>=5) ? (streak+1) : 1;
+          renderHUD();
+          setTimeout(()=>{
+            const j=balls.indexOf(this);
+            if(j>=0) balls.splice(j,1);
+          }, 140);
+        }
+        draw(){ drawBall(this); }
+      }
 
-  // ===== Draw helpers =====
-  function drawBackground(){
-    // apply board transform to keep drawing between side panels and fit vertically
-    ctx.setTransform(DPR*boardScale,0,0,DPR*boardScale, tx*DPR, ty*DPR);
-    ctx.clearRect(-tx, -ty, W, H); // clear using unscaled window area
-    const g = ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#09162e'); g.addColorStop(1,'#070f22'); ctx.fillStyle=g; ctx.fillRect(-tx, -ty, W, H);
-    // trapezoid frame: topLeft -> baseLeft -> baseRight -> topRight
-    ctx.strokeStyle='rgba(156,209,255,.38)'; ctx.lineWidth=1.6/boardScale; ctx.beginPath();
-    ctx.moveTo(topLeft.x, topLeft.y);
-    ctx.lineTo(baseLeft.x, baseLeft.y);
-    ctx.lineTo(baseRight.x, baseRight.y);
-    ctx.lineTo(topRight.x, topRight.y);
-    ctx.closePath();
-    ctx.stroke();
-  }
-  function drawPeg(p){
-    ctx.save(); ctx.globalCompositeOperation='lighter'; ctx.shadowColor='rgba(130,170,255,.45)'; ctx.shadowBlur=8; ctx.beginPath(); ctx.arc(p.x,p.y,p.r*0.9,0,TAU); ctx.fillStyle='rgba(130,170,255,.18)'; ctx.fill(); ctx.restore();
-    const grad = ctx.createRadialGradient(p.x-2,p.y-2,1, p.x,p.y, p.r+5); grad.addColorStop(0,'#f4fbff'); grad.addColorStop(.35,'#cfe2ff'); grad.addColorStop(1,'#2b4c80');
-    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,TAU); ctx.fillStyle=grad; ctx.fill();
-  }
-  function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
-  function chipColor(i,n){ const t=Math.abs(i-(n-1)/2)/((n-1)/2); if(t>0.85) return getCSS('--chipRed'); if(t>0.70) return getCSS('--chipOrange'); if(t>0.50) return getCSS('--chipAmber'); if(t>0.30) return getCSS('--chipYellow'); return getCSS('--chipPale'); }
-  function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
-  function shade(hex, amt){ const c=parseInt(hex.slice(1),16); let r=(c>>16)&255,g=(c>>8)&255,b=c&255; r=Math.min(255,Math.max(0,r+amt)); g=Math.min(255,Math.max(0,g+amt)); b=Math.min(255,Math.max(0,b+amt)); return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1); }
-  function formatMult(m){ const v=+m; return (v>=10?Math.round(v):v.toFixed(1))+'x'; }
-  function drawSlots(){ const y = (slots[0]?.y || (topOffset + (rows-1)*pegSpacingY + 36)) + 6; const h=28; for(let i=0;i<slots.length;i++){ const s=slots[i]; const x=s.x - (s.w-8)/2, w=s.w-8; const col=chipColor(i,slots.length); ctx.save(); ctx.shadowColor='rgba(0,0,0,.4)'; ctx.shadowBlur=10; roundRect(x,y,w,h,9); const gg=ctx.createLinearGradient(0,y,0,y+h); gg.addColorStop(0, shade(col, 14)); gg.addColorStop(1, col); ctx.fillStyle=gg; ctx.fill(); ctx.restore(); ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.stroke(); ctx.save(); ctx.globalAlpha=.25; roundRect(x+2,y+2,w-4,h*.42,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.restore(); const label=formatMult(s.mult); ctx.font=`800 ${12/boardScale}px ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillStyle=(i<2||i>slots.length-3)?'#fff':'#1a1400'; ctx.fillText(label, x+w/2, y+h/2+0.5); } }
-  function drawBall(b){ if(!b.trail) b.trail=[]; b.trail.push({x:b.x,y:b.y}); if(b.trail.length>10) b.trail.shift(); ctx.save(); ctx.globalCompositeOperation='lighter'; for(let i=0;i<b.trail.length;i++){ const t=b.trail[i], a=i/b.trail.length; ctx.globalAlpha=0.08+a*0.14; ctx.beginPath(); ctx.arc(t.x,t.y,b.r*(0.7+a*0.5),0,TAU); ctx.fillStyle='rgba(156,209,255,.55)'; ctx.fill(); } ctx.restore(); ctx.globalAlpha=1; const grad=ctx.createRadialGradient(b.x-2,b.y-3,1.5,b.x,b.y,b.r+7); grad.addColorStop(0,'#ffffff'); grad.addColorStop(.25,'#cfe6ff'); grad.addColorStop(1,'#2b4a7d'); ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,TAU); ctx.fillStyle=grad; ctx.fill(); }
+      function currentBet(){
+        return Math.max(0.1, parseFloat(betEl.value||'0') || 0.1);
+      }
 
-  function draw(){ drawBackground(); for(const p of pegs) drawPeg(p); drawSlots(); balls.forEach(b=> b.draw()); }
-  function update(){ const now=performance.now(); if(auto && now-lastDrop>dropInterval){ drop(); lastDrop=now; } balls.forEach(b=> b.step()); }
-  function loop(){ update(); draw(); requestAnimationFrame(loop); }
+      function setBet(v){
+        betEl.value = Math.max(0.1, v).toFixed(2);
+        updateDropBtn();
+      }
 
-  // ===== Utils =====
-  function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;}}
+      function renderHUD(){
+        balanceEl.textContent = '$'+balance.toFixed(2);
+        streakEl.textContent = 'x'+streak;
+        updateDropBtn();
+      }
 
-  // Init
-  function init(){ size(); renderHUD(); loop(); }
-  function renderHUD(){ balanceEl.textContent='$'+balance.toFixed(2); streakEl.textContent='x'+streak; updateDropBtn(); }
-  init();
-})();
-</script>
+      function updateDropBtn(){
+        if(autoMode){
+          dropBtn.textContent = autoRunning ? 'Stop Auto' : 'Start Auto';
+          dropBtn.classList.toggle('stop', autoRunning);
+          dropBtn.classList.toggle('green', !autoRunning);
+          dropBtn.disabled = !autoRunning && balance < currentBet();
+        }else{
+          dropBtn.textContent = 'Drop Ball';
+          dropBtn.classList.remove('stop');
+          dropBtn.classList.add('green');
+          dropBtn.disabled = balance < currentBet();
+        }
+      }
+
+      function setMode(isAuto){
+        autoMode = isAuto;
+        if(!autoMode) stopAuto();
+        manualBtn.classList.toggle('active', !autoMode);
+        manualBtn.setAttribute('aria-selected', String(!autoMode));
+        autoBtn.classList.toggle('active', autoMode);
+        autoBtn.setAttribute('aria-selected', String(autoMode));
+        updateDropBtn();
+      }
+
+      function startAuto(){
+        if(autoRunning) return;
+        if(balance < currentBet()) return;
+        autoDelay = parseInt(autoDelayEl.value,10) || autoDelay;
+        const count = parseInt(autoCountEl.value,10);
+        if(!count || count<=0){
+          autoInfinite = true;
+          autoRemaining = 0;
+        }else{
+          autoInfinite = false;
+          autoRemaining = count;
+        }
+        autoRunning = true;
+        lastDrop = performance.now() - autoDelay;
+        updateDropBtn();
+      }
+
+      function stopAuto(){
+        autoRunning = false;
+        autoRemaining = 0;
+        autoInfinite = true;
+        updateDropBtn();
+      }
+
+      function drop(fromAuto=false){
+        if(balls.length>=MAX_BALLS && fromAuto) return true;
+        const bet = currentBet();
+        if(balance < bet){
+          if(fromAuto) stopAuto();
+          return false;
+        }
+        balance -= bet;
+        renderHUD();
+        const spread = pegSpacingX * 0.45;
+        const centerX = (topLeft.x + topRight.x)/2;
+        const spawnX = centerX + (rng()-0.5)*spread;
+        const spawnY = topLeft.y - SPAWN_HEIGHT;
+        balls.push(new Ball(spawnX, spawnY, bet));
+        if(fromAuto && !autoInfinite){
+          autoRemaining--;
+          if(autoRemaining<=0) stopAuto();
+        }
+        return true;
+      }
+
+      manualBtn.addEventListener('click', ()=> setMode(false));
+      autoBtn.addEventListener('click', ()=> setMode(true));
+
+      dropBtn.addEventListener('click', ()=>{
+        if(autoMode){
+          if(autoRunning) stopAuto(); else startAuto();
+        }else{
+          drop(false);
+        }
+      });
+
+      canvas.addEventListener('pointerdown',(e)=>{
+        if(autoMode) return;
+        if(e.clientY < window.innerHeight*0.35) drop(false);
+      });
+
+      betHalf.addEventListener('click', ()=> setBet(currentBet()/2));
+      betDouble.addEventListener('click', ()=> setBet(currentBet()*2));
+      betReset.addEventListener('click', ()=> setBet(1));
+      betEl.addEventListener('change', ()=> setBet(currentBet()));
+      betEl.addEventListener('input', updateDropBtn);
+      chips.forEach(btn=> btn.addEventListener('click', ()=> setBet(parseFloat(btn.dataset.bet||'1'))));
+
+      autoDelayEl.addEventListener('input', ()=>{
+        autoDelay = parseInt(autoDelayEl.value,10) || autoDelay;
+        updateAutoDelayLabel();
+      });
+      autoCountEl.addEventListener('change', ()=>{
+        const v = parseInt(autoCountEl.value,10);
+        if(isNaN(v) || v<0) autoCountEl.value = '0';
+      });
+
+      riskEl.addEventListener('change', ()=>{ updateMultipliers(); draw(); });
+      rowsEl.addEventListener('input', ()=>{ buildBoard(); computeBoardScale(); draw(); });
+      resetBalanceBtn.addEventListener('click', ()=>{ balance=1000; streak=1; renderHUD(); stopAuto(); });
+
+      function updateAutoDelayLabel(){
+        const seconds = (parseInt(autoDelayEl.value,10)||0)/1000;
+        autoDelayLabel.textContent = seconds < 1 ? seconds.toFixed(2)+'s' : seconds.toFixed(1)+'s';
+      }
+
+      function drawBackground(){
+        ctx.setTransform(DPR*boardScale,0,0,DPR*boardScale, tx*DPR, ty*DPR);
+        ctx.clearRect(-tx, -ty, W, H);
+        const gradient = ctx.createLinearGradient(0, topLeft.y-80, 0, baseLeft.y+160);
+        gradient.addColorStop(0,'#050b18');
+        gradient.addColorStop(0.45,'#07132a');
+        gradient.addColorStop(1,'#040819');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-tx, -ty, W, H);
+        ctx.strokeStyle='rgba(140,188,255,.35)';
+        ctx.lineWidth=1.6/boardScale;
+        ctx.beginPath();
+        ctx.moveTo(topLeft.x, topLeft.y);
+        ctx.lineTo(baseLeft.x, baseLeft.y);
+        ctx.lineTo(baseRight.x, baseRight.y);
+        ctx.lineTo(topRight.x, topRight.y);
+        ctx.closePath();
+        ctx.stroke();
+        const glow = ctx.createLinearGradient(0, topLeft.y-40, 0, baseLeft.y+20);
+        glow.addColorStop(0,'rgba(120,170,255,.08)');
+        glow.addColorStop(1,'rgba(120,170,255,0)');
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+
+      function drawPeg(p){
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        ctx.shadowColor='rgba(120,180,255,.55)';
+        ctx.shadowBlur=9;
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.r*0.9,0,TAU);
+        ctx.fillStyle='rgba(120,180,255,.12)';
+        ctx.fill();
+        ctx.restore();
+        const grad = ctx.createRadialGradient(p.x-1.5,p.y-1.5,1, p.x,p.y, p.r+4);
+        grad.addColorStop(0,'#f6fbff');
+        grad.addColorStop(0.4,'#cfe1ff');
+        grad.addColorStop(1,'#324f86');
+        ctx.beginPath();
+        ctx.arc(p.x,p.y,p.r,0,TAU);
+        ctx.fillStyle=grad;
+        ctx.fill();
+      }
+
+      function roundRect(x,y,w,h,r){
+        ctx.beginPath();
+        ctx.moveTo(x+r,y);
+        ctx.arcTo(x+w,y,x+w,y+h,r);
+        ctx.arcTo(x+w,y+h,x,y+h,r);
+        ctx.arcTo(x,y+h,x,y,r);
+        ctx.arcTo(x,y,x+w,y,r);
+        ctx.closePath();
+      }
+
+      function chipColor(i,n){
+        const t=Math.abs(i-(n-1)/2)/((n-1)/2 || 1);
+        if(t>0.85) return '#ff4d77';
+        if(t>0.70) return '#ff814d';
+        if(t>0.50) return '#ffc04d';
+        if(t>0.30) return '#ffe05d';
+        return '#fff17a';
+      }
+
+      function formatMult(m){
+        const v=+m;
+        if(v>=1000) return v.toFixed(0)+'x';
+        if(v>=100) return v.toFixed(0)+'x';
+        if(v>=10) return v.toFixed(1)+'x';
+        return v.toFixed(2)+'x';
+      }
+
+      function drawSlots(){
+        if(!slots.length) return;
+        const y = slots[0].y + 8;
+        const h = 30;
+        for(let i=0;i<slots.length;i++){
+          const s=slots[i];
+          const x=s.x - (s.w-10)/2;
+          const w=s.w-10;
+          const col=chipColor(i,slots.length);
+          ctx.save();
+          ctx.shadowColor='rgba(0,0,0,.45)';
+          ctx.shadowBlur=12;
+          roundRect(x,y,w,h,9);
+          const gg=ctx.createLinearGradient(0,y,0,y+h);
+          gg.addColorStop(0, lighten(col,12));
+          gg.addColorStop(1, col);
+          ctx.fillStyle=gg;
+          ctx.fill();
+          ctx.restore();
+          ctx.strokeStyle='rgba(0,0,0,.35)';
+          ctx.lineWidth=1.2;
+          roundRect(x,y,w,h,9);
+          ctx.stroke();
+          ctx.save();
+          ctx.globalAlpha=0.22;
+          roundRect(x+3,y+3,w-6,h*0.45,7);
+          ctx.fillStyle='#fff';
+          ctx.fill();
+          ctx.restore();
+          const label=formatMult(s.mult);
+          ctx.font=`700 ${13/boardScale}px 'Space Grotesk',sans-serif`;
+          ctx.textAlign='center';
+          ctx.textBaseline='middle';
+          ctx.fillStyle=(i<2||i>slots.length-3)?'#fff':'#151108';
+          ctx.fillText(label, x+w/2, y+h/2+0.4);
+        }
+      }
+
+      function lighten(hex, amt){
+        const c=parseInt(hex.slice(1),16);
+        let r=(c>>16)&255,g=(c>>8)&255,b=c&255;
+        r=Math.min(255,Math.max(0,r+amt));
+        g=Math.min(255,Math.max(0,g+amt));
+        b=Math.min(255,Math.max(0,b+amt));
+        return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+      }
+
+      function drawBall(b){
+        if(!b.trail) b.trail=[];
+        b.trail.push({x:b.x,y:b.y});
+        if(b.trail.length>10) b.trail.shift();
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        for(let i=0;i<b.trail.length;i++){
+          const t=b.trail[i];
+          const a=i/b.trail.length;
+          ctx.globalAlpha=0.08+a*0.14;
+          ctx.beginPath();
+          ctx.arc(t.x,t.y,b.r*(0.7+a*0.45),0,TAU);
+          ctx.fillStyle='rgba(156,209,255,.55)';
+          ctx.fill();
+        }
+        ctx.restore();
+        ctx.globalAlpha=1;
+        const grad=ctx.createRadialGradient(b.x-2,b.y-3,1.5,b.x,b.y,b.r+7);
+        grad.addColorStop(0,'#ffffff');
+        grad.addColorStop(.25,'#d6e9ff');
+        grad.addColorStop(1,'#30508f');
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,b.r,0,TAU);
+        ctx.fillStyle=grad;
+        ctx.fill();
+      }
+
+      function draw(){
+        drawBackground();
+        for(const p of pegs) drawPeg(p);
+        drawSlots();
+        balls.forEach(b=> b.draw());
+      }
+
+      function update(){
+        const now = performance.now();
+        if(autoMode && autoRunning && now-lastDrop>autoDelay){
+          if(drop(true)) lastDrop = now; else stopAuto();
+        }
+        balls.forEach(b=> b.step());
+      }
+
+      function loop(){
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      function mulberry32(a){
+        return function(){
+          let t = a += 0x6D2B79F5;
+          t = Math.imul(t ^ t>>>15, t | 1);
+          t ^= t + Math.imul(t ^ t>>>7, t | 61);
+          return ((t ^ t>>>14) >>> 0) / 4294967296;
+        };
+      }
+
+      function init(){
+        size();
+        updateAutoDelayLabel();
+        renderHUD();
+        loop();
+      }
+
+      init();
+    })();
+  </script>
 </body>
 </html>
