@@ -39,6 +39,11 @@
     #right{right:0;border-left:1px solid var(--border);box-shadow:-22px 0 45px rgba(0,0,0,.48);padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(22px + env(safe-area-inset-bottom));}
 
     .card{border:1px solid rgba(122,156,240,.18);border-radius:18px;padding:16px;background:linear-gradient(180deg,rgba(21,30,57,.96),rgba(13,19,37,.92));box-shadow:0 14px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);display:flex;flex-direction:column;gap:12px}
+    .card.hero{padding:20px 20px 22px;gap:14px;background:linear-gradient(180deg,rgba(28,38,72,.98),rgba(17,24,44,.95));box-shadow:0 16px 36px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06);}
+    .brand{display:flex;flex-direction:column;gap:6px;}
+    .brand h1{margin:0;font-size:22px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#f7f9ff;}
+    .brand .tagline{font-size:14px;color:rgba(181,201,255,.75);line-height:1.6;}
+    .hero .hint{font-size:13px;color:rgba(190,207,255,.7);line-height:1.55;}
     .title{font-weight:700;text-transform:uppercase;font-size:13px;letter-spacing:.26em;color:rgba(173,199,255,.85);}
     .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 
@@ -60,9 +65,10 @@
     .btn.full{width:100%;}
 
     .chips{gap:8px;}
-    .chip{border-radius:12px;border:1px solid rgba(124,156,238,.35);background:var(--chipBase);color:#d6e4ff;min-width:54px;height:40px;font-weight:700;font-size:14px;cursor:pointer;transition:background .18s ease, transform .18s ease;}
+    .chip{border-radius:12px;border:1px solid rgba(124,156,238,.35);background:var(--chipBase);color:#d6e4ff;min-width:54px;height:40px;font-weight:700;font-size:14px;cursor:pointer;transition:background .18s ease, transform .18s ease, box-shadow .18s ease, color .18s ease;}
     .chip:hover{background:var(--chipHover);}
     .chip:active{transform:translateY(1px);}
+    .chip.active{background:linear-gradient(180deg,rgba(142,178,255,.42),rgba(96,126,214,.58));color:#041029;border-color:rgba(159,192,255,.8);box-shadow:0 10px 20px rgba(62,94,177,.45);}
 
     .stat{align-items:center;text-align:center;gap:10px;}
     .stat span.value{font-size:28px;font-weight:700;letter-spacing:.08em;color:#f5f7ff;}
@@ -95,6 +101,13 @@
 </head>
 <body>
   <aside id="left" class="side" aria-label="Controls">
+    <div class="card hero">
+      <div class="brand">
+        <h1>Pluto Plinko</h1>
+        <span class="tagline">Pick a bet, tune the risk, and send a glowing ball down a cosmic board.</span>
+      </div>
+      <p class="hint">Drop a single ball in Manual mode or let Auto play keep the action rolling hands-free.</p>
+    </div>
     <div class="card">
       <div class="title">Mode</div>
       <div class="seg" role="tablist">
@@ -106,11 +119,11 @@
     <div class="card">
       <div class="title">Bet Amount</div>
       <div class="row chips">
-        <button class="chip" data-bet="1">$1</button>
-        <button class="chip" data-bet="5">$5</button>
-        <button class="chip" data-bet="10">$10</button>
-        <button class="chip" data-bet="25">$25</button>
-        <button class="chip" data-bet="50">$50</button>
+        <button class="chip" type="button" data-bet="1">$1</button>
+        <button class="chip" type="button" data-bet="5">$5</button>
+        <button class="chip" type="button" data-bet="10">$10</button>
+        <button class="chip" type="button" data-bet="25">$25</button>
+        <button class="chip" type="button" data-bet="50">$50</button>
       </div>
       <div class="row">
         <button id="betHalf" class="btn dark" type="button">½</button>
@@ -210,16 +223,17 @@
       let topLeft={x:0,y:0}, topRight={x:0,y:0}, baseLeft={x:0,y:0}, baseRight={x:0,y:0};
       let nLeft={x:0,y:0}, nRight={x:0,y:0};
 
-      const GRAVITY=0.28;
-      const RESTITUTION=0.76;
-      const TANGENTIAL=0.88;
-      const WALL_REST=0.55;
-      const AIR_DRAG=0.008;
-      const JITTER=0.15;
-      const MAX_VX=1.9;
-      const SPAWN_HEIGHT=78;
-      const INITIAL_VY=0.35;
-      const MIN_VY_AFTER_HIT=0.18;
+      const GRAVITY=0.34;
+      const RESTITUTION=0.74;
+      const TANGENTIAL=0.86;
+      const WALL_REST=0.6;
+      const AIR_DRAG=0.005;
+      const JITTER=0.18;
+      const MAX_VX=2.4;
+      const MAX_VY=22;
+      const SPAWN_HEIGHT=96;
+      const INITIAL_VY=0.6;
+      const MIN_VY_AFTER_HIT=0.24;
       const MAX_BALLS=12;
 
       let autoMode=false;
@@ -228,6 +242,7 @@
       let autoRemaining=0;
       let autoInfinite=true;
       let lastDrop=0;
+      let lastFrame=performance.now();
 
       let balance=1000;
       let streak=1;
@@ -254,6 +269,7 @@
         buildBoard();
         computeBoardScale();
         draw();
+        lastFrame = performance.now();
       }
       addEventListener('resize', size, {passive:true});
       addEventListener('orientationchange', ()=> setTimeout(size,100));
@@ -367,53 +383,68 @@
           ball.vx = tx*vt + (ball.vx - vdot*n.x) + vn*n.x;
           ball.vy = ty*vt + (ball.vy - vdot*n.y) + vn*n.y;
           if(ball.vy < MIN_VY_AFTER_HIT) ball.vy = MIN_VY_AFTER_HIT;
+          if(Math.abs(ball.vx)>MAX_VX) ball.vx=Math.sign(ball.vx)*MAX_VX;
+          if(ball.vy>MAX_VY) ball.vy=MAX_VY;
         }
       }
 
       class Ball{
         constructor(x,y,bet){
           this.x=x; this.y=y; this.r=Math.max(4, pegRadius);
-          this.vx=(rng()-0.5)*0.9;
+          this.vx=(rng()-0.5)*1.2;
           this.vy=INITIAL_VY;
           this.bet=bet;
           this.done=false;
           this.trail=[];
         }
-        step(){
+        step(frame){
           if(this.done) return;
-          this.vy += GRAVITY;
-          this.vx *= (1-AIR_DRAG);
-          this.vy *= (1-AIR_DRAG*0.5);
-          this.x += this.vx;
-          this.y += this.vy;
-          collideEdge(this, topLeft, nLeft);
-          collideEdge(this, topRight, nRight);
-          for(const p of pegs){
-            const dx=this.x-p.x, dy=this.y-p.y;
-            const dist=Math.hypot(dx,dy), minD=this.r+p.r;
-            if(dist<minD){
-              const nx=dx/(dist||1), ny=dy/(dist||1);
-              const overlap=minD-dist+0.004;
-              this.x+=nx*overlap;
-              this.y+=ny*overlap;
-              const vdot=this.vx*nx + this.vy*ny;
-              if(vdot<0){
-                this.vx -= (1+RESTITUTION)*vdot*nx;
-                this.vy -= (1+RESTITUTION)*vdot*ny;
-              }
-              const tx=-ny, ty=nx;
-              const vtan=this.vx*tx + this.vy*ty;
-              const vnorm=this.vx*nx + this.vy*ny;
-              const vtanD=vtan*TANGENTIAL;
-              this.vx = tx*vtanD + nx*vnorm;
-              this.vy = ty*vtanD + ny*vnorm;
-              this.vx += (rng()-0.5)*JITTER;
-              if(this.vy < MIN_VY_AFTER_HIT) this.vy = MIN_VY_AFTER_HIT;
-              if(Math.abs(this.vx)>MAX_VX) this.vx=Math.sign(this.vx)*MAX_VX;
-            }
-          }
+          const steps = Math.max(1, Math.ceil(frame));
+          const frameStep = frame/steps;
           const floorY = baseLeft.y + 6;
-          if(this.y>floorY) this.land();
+          for(let i=0;i<steps;i++){
+            const drag=Math.pow(1-AIR_DRAG, frameStep);
+            const dragY=Math.pow(1-AIR_DRAG*0.5, frameStep);
+            this.vy += GRAVITY*frameStep;
+            this.vx *= drag;
+            this.vy *= dragY;
+            if(Math.abs(this.vx)>MAX_VX) this.vx=Math.sign(this.vx)*MAX_VX;
+            if(this.vy>MAX_VY) this.vy=MAX_VY;
+            this.x += this.vx*frameStep;
+            this.y += this.vy*frameStep;
+            collideEdge(this, topLeft, nLeft);
+            collideEdge(this, topRight, nRight);
+            for(const p of pegs){
+              const dx=this.x-p.x, dy=this.y-p.y;
+              const dist=Math.hypot(dx,dy), minD=this.r+p.r;
+              if(dist<minD){
+                const nx=dx/(dist||1), ny=dy/(dist||1);
+                const overlap=minD-dist+0.004;
+                this.x+=nx*overlap;
+                this.y+=ny*overlap;
+                const vdot=this.vx*nx + this.vy*ny;
+                if(vdot<0){
+                  this.vx -= (1+RESTITUTION)*vdot*nx;
+                  this.vy -= (1+RESTITUTION)*vdot*ny;
+                }
+                const tx=-ny, ty=nx;
+                const vtan=this.vx*tx + this.vy*ty;
+                const vnorm=this.vx*nx + this.vy*ny;
+                const vtanD=vtan*TANGENTIAL;
+                this.vx = tx*vtanD + nx*vnorm;
+                this.vy = ty*vtanD + ny*vnorm;
+                this.vx += (rng()-0.5)*JITTER*frameStep;
+                if(this.vy < MIN_VY_AFTER_HIT) this.vy = MIN_VY_AFTER_HIT;
+                if(this.vy>MAX_VY) this.vy = MAX_VY;
+                if(Math.abs(this.vx)>MAX_VX) this.vx=Math.sign(this.vx)*MAX_VX;
+              }
+            }
+            if(this.y>floorY){
+              this.land();
+              break;
+            }
+            if(this.done) break;
+          }
         }
         land(){
           this.done=true;
@@ -439,14 +470,27 @@
         return Math.max(0.1, parseFloat(betEl.value||'0') || 0.1);
       }
 
+      function updateChipState(v){
+        const normalized = Math.round(v*100)/100;
+        chips.forEach(btn=>{
+          const val = parseFloat(btn.dataset.bet||'0');
+          const isMatch = Math.abs(val-normalized)<0.001;
+          btn.classList.toggle('active', isMatch);
+          btn.setAttribute('aria-pressed', isMatch ? 'true' : 'false');
+        });
+      }
+
       function setBet(v){
-        betEl.value = Math.max(0.1, v).toFixed(2);
+        const sanitized = Math.max(0.1, v);
+        betEl.value = sanitized.toFixed(2);
+        updateChipState(sanitized);
         updateDropBtn();
       }
 
       function renderHUD(){
         balanceEl.textContent = '$'+balance.toFixed(2);
         streakEl.textContent = 'x'+streak;
+        updateChipState(currentBet());
         updateDropBtn();
       }
 
@@ -539,8 +583,17 @@
       betDouble.addEventListener('click', ()=> setBet(currentBet()*2));
       betReset.addEventListener('click', ()=> setBet(1));
       betEl.addEventListener('change', ()=> setBet(currentBet()));
-      betEl.addEventListener('input', updateDropBtn);
-      chips.forEach(btn=> btn.addEventListener('click', ()=> setBet(parseFloat(btn.dataset.bet||'1'))));
+      betEl.addEventListener('input', ()=>{
+        updateChipState(currentBet());
+        updateDropBtn();
+      });
+      chips.forEach(btn=>{
+        btn.setAttribute('aria-pressed','false');
+        btn.addEventListener('click', ()=>{
+          const val = parseFloat(btn.dataset.bet||'1');
+          setBet(val);
+        });
+      });
 
       autoDelayEl.addEventListener('input', ()=>{
         autoDelay = parseInt(autoDelayEl.value,10) || autoDelay;
@@ -713,16 +766,21 @@
         balls.forEach(b=> b.draw());
       }
 
-      function update(){
-        const now = performance.now();
+      function update(now){
+        if(typeof now!=='number') now=performance.now();
+        let dt = (now-lastFrame)/1000;
+        if(!isFinite(dt) || dt<=0) dt=1/60;
+        dt = Math.max(0.008, Math.min(0.05, dt));
+        const frame = dt*60;
+        lastFrame = now;
         if(autoMode && autoRunning && now-lastDrop>autoDelay){
           if(drop(true)) lastDrop = now; else stopAuto();
         }
-        balls.forEach(b=> b.step());
+        balls.forEach(b=> b.step(frame));
       }
 
-      function loop(){
-        update();
+      function loop(now){
+        update(now);
         draw();
         requestAnimationFrame(loop);
       }
@@ -740,7 +798,8 @@
         size();
         updateAutoDelayLabel();
         renderHUD();
-        loop();
+        lastFrame = performance.now();
+        requestAnimationFrame(loop);
       }
 
       init();
